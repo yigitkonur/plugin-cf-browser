@@ -25,6 +25,8 @@ printf '{"account_id":"%s","api_token":"%s"}' "$CF_ACCOUNT_ID" "$CF_API_TOKEN" \
   | claude plugin configure cf-browser@plugin-cf-browser --values-stdin
 ```
 
+or skip that and put `CF_ACCOUNT_ID` and `CF_API_TOKEN` in `~/.cf-browser/.env` (the file codex uses, see below); `/plugin` values win when both are set.
+
 restart claude code. run `/cf-browser:setup` once: it checks everything and asks how you want logins kept.
 
 prefer the classic two-step?

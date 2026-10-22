@@ -24,15 +24,15 @@
     "account_id": {
       "type": "string",
       "title": "Cloudflare account ID",
-      "description": "The 32-character account ID (dashboard: Account home → the ID next to the account name).",
-      "required": true
+      "description": "The 32-character account ID (dashboard: Account home → the ID next to the account name). Or leave empty and put CF_ACCOUNT_ID in ~/.cf-browser/.env.",
+      "required": false
     },
     "api_token": {
       "type": "string",
       "title": "Cloudflare API token (Browser Run Edit)",
-      "description": "An API token with the Browser Run Edit/Write permission for this account. Stored in the OS keychain.",
+      "description": "An API token with the Browser Run Edit/Write permission for this account. Stored in the OS keychain. Or leave empty and put CF_API_TOKEN in ~/.cf-browser/.env.",
       "sensitive": true,
-      "required": true
+      "required": false
     },
     "plan": {
       "type": "string",
