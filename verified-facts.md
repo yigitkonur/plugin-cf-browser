@@ -30,14 +30,14 @@ Environment: Node 26.5, Claude Code 2.1.307, `@playwright/mcp` 0.0.83 with `play
 
 ## Plugin behavior (live ledger, 2026-10-22)
 
-Server driven over stdio with `mcpc` 0.7.0 against the Workers Paid account; the human side (Live View, handoff, logging in) done by a tester in a real browser. Test site: `the-internet.herokuapp.com` with its public demo login, typed by the tester, never by the agent. L4 and L16 run inside Claude Code after installing from GitHub.
+Server driven over stdio with `mcpc` 0.7.0 against the Workers Paid account; the human side (Live View, handoff, logging in) done by a tester in a real browser. Test site: `the-internet.herokuapp.com` with its public demo login, typed by the tester, never by the agent. L4 and L16 run inside Claude Code after installing from GitHub. The whole ledger was rerun once after the review fixes (L3, L5, L6, L9–L15 over stdio; L1, L2, L4, L7, L8 on the installed copy).
 
 | # | Behavior | Expect | Saw |
 |---|---|---|---|
 | L1 | Fresh start | `tools/list` at once; a page tool says installing; then `session_list` → `[]` | 49 tools at 0 s; `INSTALLING: cf-browser is installing its browser driver…`; after the install `session_list` → `[]` |
 | L2 | Read a page and close | Hacker News top 5 titles + screenshot; nothing left at Cloudflare | 5 titles, PNG screenshot; `session_close` → closed; `GET /devtools/session` → `[]` |
 | L3 | Idle and crash | reaper closes at the idle timeout; after `kill -9` the next start sweeps | `closed: idle for 60s`; after `kill -9`, the next start logged `swept 1 browser(s) left by a crashed run` and Cloudflare listed `[]` |
-| L4 | Exit and `/clear` | exit closes browsers; `/clear` does not | see below |
+| L4 | Exit and `/clear` | exit closes browsers; `/clear` does not | interactive Claude Code: after the turn `Stop says: cf-browser: 1 browser open (keepme); idle ones close automatically in ≤5 min, and all close when Claude Code exits.` (not repeated next turn); after `/clear` Cloudflare still listed it and `session_list` → `keepme — open`; `/exit` → Cloudflare `open=0` within 2 s; killing the terminal → `open=0` within 2 s |
 | L5 | Limits | third browser refused; budget refused with the confirm path | `TOO_MANY_SESSIONS` listing the two open; `BUDGET_EXCEEDED` with numbers; `confirm_over_budget: true` opened one |
 | L6 | Live View | read-only ignores typing; interactive takes it | read-only: field stayed empty; interactive: field read `12345`; `opened_locally: true` |
 | L7 | Login handoff | handoff opens; page tools refused meanwhile; Done → saved; agent sees Logout | `HANDOFF_ACTIVE` on a page tool; `human_wait` pending, then `done: User clicked 'Done'`, profile `main` saved (4 cookies); snapshot on `/secure` shows "Logout" |
@@ -49,4 +49,4 @@ Server driven over stdio with `mcpc` 0.7.0 against the Workers Paid account; the
 | L13 | Crawl | limit 5 completes, results written | `completed`, 5 records in `out/crawls/<job>.jsonl`; one `crawl` ledger entry |
 | L14 | WebMCP | lab browser lists and runs page tools | demo page registered 3 tools; `webmcp_call search_location {"location":"Paris"}` navigated to the Paris results |
 | L15 | Guards | profiles folder and token denied; `~/.ssh` upload denied; primer present | `scripts/hook-smoke.sh` 9/9 ok; `browser_file_upload` of `~/.ssh/id_ed25519` → `UPLOAD_DENIED`; a project file uploaded |
-| L16 | Install from GitHub | `plugin details` shows 6 skills, 3 hooks, 1 MCP server; L1/L2/L7/L8 on the installed copy | see below |
+| L16 | Install from GitHub | `plugin details` shows 6 skills, 3 hooks, 1 MCP server; L1/L2/L7/L8 on the installed copy | clean `CLAUDE_CONFIG_DIR`, README commands: `Skills (6) browse, login, profiles, replay, sessions, setup`, `Hooks (4) SessionStart, SubagentStart, PreToolUse, Stop` (3 scripts), `MCP servers (1) browser`; first start installed `deps/<hash>/node_modules/.complete`, 49 tools; `/cf-browser:browse` HN → `page_read` (kitesurf) + screenshot, 5 titles, nothing open; `/cf-browser:login` → handoff, `human_wait` pending ×N then `done: User clicked 'Done'`, `main` saved, snapshot shows Logout; a browse task loaded `main` (5 cookies) and saw "Welcome to the Secure Area" |

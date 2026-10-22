@@ -10,3 +10,4 @@ First release.
 - Limits: per-window browser cap, daily minute budget with a confirm path, one 429 retry at most.
 - Hooks: primer, non-blocking stop notice, guard for the profiles folder and the API token.
 - Skills: browse, login, profiles, sessions, replay, setup.
+- Review fixes before release: the profile lock stays fresh during long handoffs, handoffs go to the tab the agent is on, parallel creates respect the browser cap, page tools queued behind a handoff are refused, the budget counts other windows' open browsers, stale-lock takeover is serialized, a running tool call is never idle-closed.
