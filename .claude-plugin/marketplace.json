@@ -1,0 +1,22 @@
+{
+  "name": "plugin-cf-browser",
+  "owner": {
+    "name": "yigitkonur",
+    "url": "https://github.com/yigitkonur"
+  },
+  "metadata": {
+    "description": "Claude Code plugin that lets agents use Cloudflare Browser Run as their browser.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "cf-browser",
+      "description": "Give Claude Code a real cloud browser on Cloudflare Browser Run: saved logins in an everyday profile, human handoff for logins and 2FA through Live View, a daily budget, and browsers that close themselves so nothing keeps billing.",
+      "version": "1.0.0",
+      "author": { "name": "yigitkonur", "url": "https://github.com/yigitkonur" },
+      "source": "./plugins/cf-browser",
+      "category": "development",
+      "keywords": ["cloudflare", "browser-run", "cloud-browser", "browser-agent", "web-automation", "mcp", "live-view"]
+    }
+  ]
+}

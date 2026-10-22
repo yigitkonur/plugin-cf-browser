@@ -1,0 +1,46 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+permissions: { contents: read }
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix: { os: [ubuntu-latest, macos-latest] }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22 }
+      - name: Install server dependencies
+        working-directory: plugins/cf-browser/server
+        run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Build and check dist/ is fresh
+        working-directory: plugins/cf-browser/server
+        run: |
+          npm run build
+          git diff --exit-code -- dist/
+      - name: One copy of playwright-core
+        working-directory: plugins/cf-browser/server
+        run: |
+          n="$(npm ls playwright-core --all --parseable | sort -u | wc -l)"
+          npm ls playwright-core --all
+          [ "$n" -eq 1 ]
+      - name: Install Claude Code CLI (for plugin validate)
+        run: npm i -g @anthropic-ai/claude-code
+      - name: Validate plugin and marketplace
+        run: |
+          python3 -m pip install --quiet pyyaml || python3 -m pip install --quiet --break-system-packages pyyaml || true
+          scripts/validate.sh
+      - name: Hook smoke test
+        run: scripts/hook-smoke.sh
+      - name: Server starts and lists tools without credentials
+        run: |
+          out="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' '{"jsonrpc":"2.0","method":"notifications/initialized"}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | CFB_DEV=1 CLAUDE_PLUGIN_DATA="$RUNNER_TEMP/cfb" perl -e "alarm 20; exec @ARGV" node plugins/cf-browser/server/launch.mjs 2>/dev/null | tail -1)"
+          echo "$out" | node -e 'const r=JSON.parse(require("fs").readFileSync(0,"utf8")); const n=r.result.tools.length; console.log(n+" tools"); if (n<45) process.exit(1)'
+      - name: Secret scan (tree and history)
+        run: |
+          scripts/secret-scan.sh --tree
+          scripts/secret-scan.sh --history
