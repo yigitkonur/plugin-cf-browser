@@ -283,12 +283,18 @@ export const tools: ToolDef[] = [
     handler: a => S.withSession(a.session_id, async r => {
       if (S.handoffActive(r)) throw new ToolError('HANDOFF_ACTIVE', `A handoff is already active on ${r.label}.`, 'Call human_wait.');
       const timeoutMs = Math.min(30, Math.max(1, a.timeout_minutes || 10)) * 60000;
-      const lv = await r.cdp.send('Cloudflare.getLiveView', { mode: 'tab', targetId: r.targetId, expiresInMs: Math.max(60000, timeoutMs) });
-      if (!(r as any).handoffListener) {
-        (r as any).handoffListener = true;
-        r.cdp.on('Cloudflare.handoffComplete', (p: any) => { if (r.handoff && !r.handoff.result) r.handoff.result = { status: p?.success === false ? 'failed' : 'done', reason: p?.reason, at: Date.now() }; });
+      // Hand off the tab the agent is on (it may have switched tabs or followed a login popup), not the first one.
+      const pages = r.context.pages().filter((p: any) => !p.isClosed());
+      const page = [r.currentPage, r.page].find(p => p && !p.isClosed()) || pages[pages.length - 1];
+      if (!page) throw new ToolError('NO_TAB', `Browser ${r.label} has no open tab.`, 'browser_navigate to the login page first.');
+      if (page !== (r as any).hpage) {
+        const cdp = page === r.page ? r.cdp : await r.context.newCDPSession(page);
+        r.htarget = page === r.page ? r.targetId : (await cdp.send('Target.getTargetInfo')).targetInfo.targetId;
+        cdp.on('Cloudflare.handoffComplete', (p: any) => { if (r.handoff && !r.handoff.result) r.handoff.result = { status: p?.success === false ? 'failed' : 'done', reason: p?.reason, at: Date.now() }; });
+        r.hcdp = cdp; (r as any).hpage = page;
       }
-      const h = await r.cdp.send('Cloudflare.handoff', { targetId: r.targetId, instructions: a.instructions, timeout: timeoutMs });
+      const lv = await r.hcdp.send('Cloudflare.getLiveView', { mode: 'tab', targetId: r.htarget, expiresInMs: Math.max(60000, timeoutMs) });
+      const h = await r.hcdp.send('Cloudflare.handoff', { targetId: r.htarget, instructions: a.instructions, timeout: timeoutMs });
       r.handoff = { id: h.handoffId, startedAt: Date.now(), timeoutMs, instructions: a.instructions, result: null };
       const opened = openLocally(lv.devtoolsFrontendUrl);
       return {
@@ -309,7 +315,7 @@ export const tools: ToolDef[] = [
       const deadline = Date.now() + Math.min(55, Math.max(1, a.wait_seconds || 50)) * 1000;
       while (!h.result && Date.now() < deadline && r.state === 'open') {
         try {
-          const s = await r.cdp.send('Cloudflare.getHandoffState', { targetId: r.targetId });
+          const s = await (r.hcdp || r.cdp).send('Cloudflare.getHandoffState', { targetId: r.htarget || r.targetId });
           if (!s.active && !h.result) h.result = { status: 'ended', at: Date.now() };
         } catch { /* keep waiting */ }
         if (!h.result && Date.now() > h.startedAt + h.timeoutMs + 5000) h.result = { status: 'timeout', at: Date.now() };
@@ -450,6 +456,11 @@ export async function callPageTool(name: string, args: Json) {
   pw();
   return S.withSession(String(session_id), async r => {
     const res: any = await r.client!.callTool({ name, arguments: rest }, undefined, { timeout: 180000 });
+    // Track the tab the embedded server treats as current ("- N: (current) [...]" in its tab list).
+    const text = (res.content || []).map((c: any) => c.type === 'text' ? c.text : '').join('\n');
+    const cur = /^- (\d+): \(current\)/m.exec(text);
+    const tabs = r.context.pages();
+    r.currentPage = cur ? tabs[Number(cur[1])] : tabs.length === 1 ? tabs[0] : r.currentPage;
     const allowed: string[] | undefined = r.guardrails?.allowedDomains;
     if (allowed && name === 'browser_navigate' && /HTTP status: 403/.test(JSON.stringify(res.content))) {
       let host = '';

@@ -26,6 +26,7 @@ export interface Rec {
   handoff: Handoff | null; firstSaveDone: boolean; lastSaveAt: number; disconnected?: boolean;
   chain: Promise<unknown>; browser?: any; context?: any; page?: any; cdp?: any; browserCdp?: any; targetId?: string;
   client?: Client; server?: any;
+  inflight: number; currentPage?: any; hcdp?: any; htarget?: string; remoteCloseUnconfirmed?: boolean;
 }
 
 export const records = new Map<string, Rec>();
@@ -48,7 +49,22 @@ const ago = (ms: number) => { const s = Math.round(ms / 1000); return s < 90 ? `
 
 export function liveMsToday() {
   const day0 = usage.startOfUtcDay();
-  return own().reduce((n, r) => n + (Date.now() - Math.max(r.createdAt, day0)), 0);
+  return own().reduce((n, r) => n + (Date.now() - Math.max(r.createdAt, day0)), 0) + otherWindowsLiveMs(day0);
+}
+
+// Browsers other live Claude Code windows have open on this machine: their time reaches the ledger only at close.
+function otherWindowsLiveMs(day0: number) {
+  let n = 0, files: string[] = [];
+  try { files = readdirSync(stateDir()).filter(f => f.endsWith('.json') && f !== `${process.pid}-${SERVER_NONCE}.json`); } catch { return 0; }
+  for (const f of files) {
+    try {
+      const s = JSON.parse(readFileSync(join(stateDir(), f), 'utf8'));
+      if (Date.now() - Date.parse(s.updatedAt) >= profiles.STALE_MS) continue;
+      try { process.kill(s.serverPid, 0); } catch (e: any) { if (e?.code !== 'EPERM') continue; }
+      for (const x of s.sessions || []) if (x.state !== 'closed') n += Date.now() - Math.max(x.createdAt, day0);
+    } catch { /* unreadable: skip */ }
+  }
+  return n;
 }
 
 function uniqueLabel(want?: string) {
@@ -89,12 +105,16 @@ export async function createSession(a: CreateArgs) {
   }
   if (used >= cfg.dailyBudgetMin * 0.8) warnings.push(`Budget: ${used.toFixed(1)} of ${cfg.dailyBudgetMin} min used today.`);
 
-  // 2. concurrency
+  // 2. concurrency (browsers still being created count too, so parallel calls cannot overshoot)
   const open = own();
-  if (open.length >= cfg.maxConcurrent) {
-    throw new ToolError('TOO_MANY_SESSIONS', `This window already has ${open.length} open browser(s), the max_concurrent_sessions limit: ${open.map(r => `${r.label} (${r.id}, profile ${r.profile ?? 'none'}, idle ${ago(Date.now() - r.lastActivityAt)})`).join('; ')}.`, 'Reuse one of them (pass its session_id), or session_close one first.');
+  if (open.length + creating >= cfg.maxConcurrent) {
+    throw new ToolError('TOO_MANY_SESSIONS', `This window already has ${open.length + creating} open browser(s), the max_concurrent_sessions limit: ${open.map(r => `${r.label} (${r.id}, profile ${r.profile ?? 'none'}, idle ${ago(Date.now() - r.lastActivityAt)})`).concat(creating ? [`${creating} still opening`] : []).join('; ')}.`, 'Reuse one of them (pass its session_id), or session_close one first.');
   }
 
+  creating++;
+  let reserved = true;
+  const unreserve = () => { if (reserved) { reserved = false; creating--; } };
+  try {
   // 3. profile
   const mode = a.profile_mode || 'write';
   let profile: string | null = null;
@@ -132,9 +152,10 @@ export async function createSession(a: CreateArgs) {
   const now = Date.now();
   const rec: Rec = {
     id, label, createdAt: now, lastActivityAt: now, profile, profileMode: mode, recording: !!a.record, lab: !!a.lab, guardrails,
-    idleTimeoutS, maxAgeMin: cfg.maxSessionMin, state: 'open', handoff: null, firstSaveDone: false, lastSaveAt: now, chain: Promise.resolve(),
+    idleTimeoutS, maxAgeMin: cfg.maxSessionMin, state: 'open', handoff: null, firstSaveDone: false, lastSaveAt: now, chain: Promise.resolve(), inflight: 0,
   };
   records.set(id, rec);
+  unreserve();
   if (profile && mode === 'write') rewriteLock(profile, pendingId, id);
   writeState();
   usage.recordSessionStart(id);
@@ -187,7 +208,9 @@ export async function createSession(a: CreateArgs) {
     await closeSession(rec, { save: false, reason: 'create failed' }).catch(() => {});
     throw e instanceof ToolError ? e : new ToolError('CREATE_FAILED', `Could not set up the browser: ${mask((e as any)?.message || e).split('\n')[0]}`);
   }
+  } finally { unreserve(); }
 }
+let creating = 0;
 
 function rewriteLock(profile: string, oldSession: string, newSession: string) {
   const l = profiles.readLock(profile);
@@ -230,8 +253,12 @@ export async function withSession<T>(id: string, fn: (r: Rec) => Promise<T>, opt
   try {
     await prev;
     if (rec.state !== 'open') getRec(id);
+    // Checked again here: a handoff may have started while this call waited in the queue.
+    if (opts.pageTool && handoffActive(rec)) throw new ToolError('HANDOFF_ACTIVE', `A human is using browser ${rec.label} right now (handoff in progress).`, 'Call human_wait with this session_id until it reports done; do not ask the user whether they are finished.');
     rec.lastActivityAt = Date.now();
-    const out = await fn(rec);
+    rec.inflight++;
+    let out: T;
+    try { out = await fn(rec); } finally { rec.inflight--; }
     rec.lastActivityAt = Date.now();
     await ping(rec);
     return out;
@@ -275,14 +302,14 @@ export async function closeSession(r: Rec, o: { save?: boolean; reason: string }
     try { saved = await saveProfile(r); } catch (e: any) { saved = { error: mask(e?.message || e).split('\n')[0] }; }
   }
   await finish(r, true);
-  return { saved };
+  return { saved, ...(r.remoteCloseUnconfirmed ? { remote_close: `unconfirmed: Cloudflare did not answer the close; with no client connected it ends the browser within ${keepAliveMs(r.idleTimeoutS) / 1000}s (keep_alive)` } : {}) };
 }
 
 async function finish(r: Rec, deleteRemote: boolean) {
   await r.client?.close().catch(() => {});
   await r.server?.close?.().catch(() => {});
   await r.browser?.close().catch(() => {});
-  if (deleteRemote) await rest('DELETE', `/devtools/browser/${r.id}`, { allow404: true, timeoutMs: 10000 }).catch(() => {});
+  if (deleteRemote) await rest('DELETE', `/devtools/browser/${r.id}`, { allow404: true, timeoutMs: 10000 }).catch(() => { r.remoteCloseUnconfirmed = true; });
   r.state = 'closed'; r.closedAt = Date.now();
   if (r.profile && r.profileMode === 'write') profiles.releaseLock(r.profile, SERVER_NONCE, r.id);
   writeState();
@@ -305,23 +332,23 @@ async function reapTick() {
   const now = Date.now();
   for (const r of own()) {
     if (r.state !== 'open') continue;
+    if (r.profile && r.profileMode === 'write') profiles.touchLock(r.profile, SERVER_NONCE, r.id);
     if (r.handoff && !r.handoff.result) {
       // A handoff does not keep the session alive by itself (verified): keep it warm and watch the state.
       await ping(r);
       try {
-        const s = await r.cdp.send('Cloudflare.getHandoffState', { targetId: r.targetId });
+        const s = await (r.hcdp || r.cdp).send('Cloudflare.getHandoffState', { targetId: r.htarget || r.targetId });
         if (!s.active && !r.handoff.result) r.handoff.result = { status: 'ended', at: Date.now() };
       } catch { /* next tick */ }
       if (!r.handoff.result && now > r.handoff.startedAt + r.handoff.timeoutMs + 5000) r.handoff.result = { status: 'timeout', at: now };
       if (!r.handoff.result) continue;
       r.lastActivityAt = now;
     }
-    if (now - r.lastActivityAt >= r.idleTimeoutS * 1000) { await closeSession(r, { save: true, reason: `idle for ${r.idleTimeoutS}s` }); continue; }
+    if (r.inflight === 0 && now - r.lastActivityAt >= r.idleTimeoutS * 1000) { await closeSession(r, { save: true, reason: `idle for ${r.idleTimeoutS}s` }); continue; }
     if (now - r.createdAt >= r.maxAgeMin * 60000) { await closeSession(r, { save: true, reason: `reached max age ${r.maxAgeMin} min` }); continue; }
     if (r.profileMode === 'write' && now - r.lastActivityAt < 300000 && now - r.lastSaveAt >= 300000) {
       await saveProfile(r).catch(() => {});
     }
-    if (r.profile && r.profileMode === 'write') profiles.touchLock(r.profile, SERVER_NONCE, r.id);
   }
   writeState();
 }

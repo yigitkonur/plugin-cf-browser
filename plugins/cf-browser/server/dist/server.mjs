@@ -17292,7 +17292,7 @@ import { homedir as homedir2, platform, tmpdir } from "node:os";
 import { basename, join as join6, resolve as resolve2, sep } from "node:path";
 
 // src/profiles.ts
-import { closeSync, existsSync, fsyncSync, mkdirSync as mkdirSync2, openSync, readFileSync as readFileSync2, readdirSync as readdirSync2, renameSync, rmSync, statSync, unlinkSync, writeSync, chmodSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync as mkdirSync2, openSync, readFileSync as readFileSync2, readdirSync as readdirSync2, renameSync, rmSync, rmdirSync, statSync, unlinkSync, writeSync, chmodSync } from "node:fs";
 import { join as join4 } from "node:path";
 import { randomBytes } from "node:crypto";
 var NAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -17415,7 +17415,7 @@ function acquireLock(name, info) {
   ensureDir(root());
   ensureDir(profileDir(name));
   const path = join4(profileDir(name), "lock.json");
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const fd = openSync(path, "wx", 384);
       try {
@@ -17429,13 +17429,29 @@ function acquireLock(name, info) {
       if (e?.code !== "EEXIST") throw e;
       const holder2 = readLock(name);
       if (holder2 && !isStale(holder2)) return { ok: false, holder: holder2 };
+      const guard = join4(profileDir(name), "lock.takeover");
       try {
-        renameSync(path, join4(profileDir(name), `lock.stale-${info.nonce}`));
+        mkdirSync2(guard, { mode: 448 });
       } catch {
+        try {
+          if (Date.now() - statSync(guard).mtimeMs > 1e4) rmdirSync(guard);
+        } catch {
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+        continue;
       }
       try {
-        unlinkSync(join4(profileDir(name), `lock.stale-${info.nonce}`));
-      } catch {
+        const again = readLock(name);
+        if (again && !isStale(again)) return { ok: false, holder: again };
+        if (JSON.stringify(again) === JSON.stringify(holder2)) try {
+          unlinkSync(path);
+        } catch {
+        }
+      } finally {
+        try {
+          rmdirSync(guard);
+        } catch {
+        }
       }
     }
   }
@@ -18259,7 +18275,29 @@ var ago = (ms) => {
 };
 function liveMsToday() {
   const day0 = startOfUtcDay();
-  return own2().reduce((n, r) => n + (Date.now() - Math.max(r.createdAt, day0)), 0);
+  return own2().reduce((n, r) => n + (Date.now() - Math.max(r.createdAt, day0)), 0) + otherWindowsLiveMs(day0);
+}
+function otherWindowsLiveMs(day0) {
+  let n = 0, files = [];
+  try {
+    files = readdirSync3(stateDir()).filter((f) => f.endsWith(".json") && f !== `${process.pid}-${SERVER_NONCE}.json`);
+  } catch {
+    return 0;
+  }
+  for (const f of files) {
+    try {
+      const s = JSON.parse(readFileSync3(join5(stateDir(), f), "utf8"));
+      if (Date.now() - Date.parse(s.updatedAt) >= STALE_MS) continue;
+      try {
+        process.kill(s.serverPid, 0);
+      } catch (e) {
+        if (e?.code !== "EPERM") continue;
+      }
+      for (const x of s.sessions || []) if (x.state !== "closed") n += Date.now() - Math.max(x.createdAt, day0);
+    } catch {
+    }
+  }
+  return n;
 }
 function uniqueLabel(want) {
   const taken = new Set(own2().map((r) => r.label));
@@ -18300,124 +18338,139 @@ async function createSession(a) {
   }
   if (used >= cfg.dailyBudgetMin * 0.8) warnings.push(`Budget: ${used.toFixed(1)} of ${cfg.dailyBudgetMin} min used today.`);
   const open2 = own2();
-  if (open2.length >= cfg.maxConcurrent) {
-    throw new ToolError("TOO_MANY_SESSIONS", `This window already has ${open2.length} open browser(s), the max_concurrent_sessions limit: ${open2.map((r) => `${r.label} (${r.id}, profile ${r.profile ?? "none"}, idle ${ago(Date.now() - r.lastActivityAt)})`).join("; ")}.`, "Reuse one of them (pass its session_id), or session_close one first.");
+  if (open2.length + creating >= cfg.maxConcurrent) {
+    throw new ToolError("TOO_MANY_SESSIONS", `This window already has ${open2.length + creating} open browser(s), the max_concurrent_sessions limit: ${open2.map((r) => `${r.label} (${r.id}, profile ${r.profile ?? "none"}, idle ${ago(Date.now() - r.lastActivityAt)})`).concat(creating ? [`${creating} still opening`] : []).join("; ")}.`, "Reuse one of them (pass its session_id), or session_close one first.");
   }
-  const mode = a.profile_mode || "write";
-  let profile = null;
-  let storageState;
-  const pendingId = `pending-${randomBytes2(4).toString("hex")}`;
-  const label = uniqueLabel(a.label);
-  if (mode !== "none") {
-    profile = (a.profile || cfg.defaultProfile).toLowerCase();
-    checkName(profile);
-    if (mode === "write") {
-      const got = acquireLock(profile, { serverPid: process.pid, nonce: SERVER_NONCE, claudePid: process.ppid, sessionId: pendingId, label, since: (/* @__PURE__ */ new Date()).toISOString(), updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
-      if (!got.ok) throw profileInUse(profile, got.holder);
-    } else if (!exists(profile)) {
-      throw new ToolError("PROFILE_NOT_FOUND", `Profile "${profile}" does not exist yet, so there is nothing to open read-only.`, 'Use profile_mode:"none" for an empty browser, or log in first (cf-browser:login).');
+  creating++;
+  let reserved = true;
+  const unreserve = () => {
+    if (reserved) {
+      reserved = false;
+      creating--;
     }
-    storageState = loadState(profile);
-  }
-  const idleTimeoutS = Math.min(cfg.plan === "free" ? 300 : 1140, Math.max(60, Math.round(a.idle_timeout_s || cfg.idleTimeoutS)));
-  const guardrails = a.allowed_domains?.length || a.allowed_domain_sets?.length ? { ...a.allowed_domains?.length ? { allowedDomains: a.allowed_domains } : {}, ...a.allowed_domain_sets?.length ? { allowedDomainSets: a.allowed_domain_sets } : {} } : null;
-  let id;
-  try {
-    const r = await rest("POST", "/devtools/browser", { query: { keep_alive: keepAliveMs(idleTimeoutS), recording: !!a.record, lab: !!a.lab }, json: guardrails ? { guardrails } : void 0 });
-    id = r.data?.sessionId;
-    if (!id) throw new ToolError("CLOUDFLARE", `Cloudflare did not return a session id: ${mask(JSON.stringify(r.data)).slice(0, 200)}`);
-  } catch (e) {
-    if (profile && mode === "write") releaseLock(profile, SERVER_NONCE, pendingId);
-    throw e;
-  }
-  const now = Date.now();
-  const rec = {
-    id,
-    label,
-    createdAt: now,
-    lastActivityAt: now,
-    profile,
-    profileMode: mode,
-    recording: !!a.record,
-    lab: !!a.lab,
-    guardrails,
-    idleTimeoutS,
-    maxAgeMin: cfg.maxSessionMin,
-    state: "open",
-    handoff: null,
-    firstSaveDone: false,
-    lastSaveAt: now,
-    chain: Promise.resolve()
   };
-  records.set(id, rec);
-  if (profile && mode === "write") rewriteLock(profile, pendingId, id);
-  writeState();
-  recordSessionStart(id);
   try {
-    const browser = await chromium.connectOverCDP(await wsUrl(id), { headers: authHeaders(), timeout: 3e4 });
-    rec.browser = browser;
-    browser.on("disconnected", () => onDisconnect(rec));
-    const context = await browser.newContext({ storageState, viewport: { width: 1280, height: 800 } });
-    const page = await context.newPage();
-    for (const c of browser.contexts()) if (c !== context) for (const p of c.pages()) await p.close().catch(() => {
-    });
-    rec.context = context;
-    rec.page = page;
-    rec.cdp = await context.newCDPSession(page);
-    rec.targetId = (await rec.cdp.send("Target.getTargetInfo")).targetInfo.targetId;
-    rec.browserCdp = await browser.newBrowserCDPSession();
-    const server = await createConnection({
-      capabilities: PAGE_CAPABILITIES,
-      codegen: "none",
-      webmcp: !!a.lab,
-      timeouts: { idle: 0 },
-      outputDir: join5(cfg.dataDir, "out", id),
-      filePaths: "absolute",
-      allowUnrestrictedFileAccess: false
-    }, async () => {
-      if (rec.state !== "open") throw new Error("SESSION_CLOSED");
-      return context;
-    });
-    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverT);
-    const client = new Client({ name: "cf-browser", version: "1" }, { capabilities: { roots: {} } });
-    client.setRequestHandler(ListRootsRequestSchema, async () => ({ roots: [{ uri: pathToFileURL(cfg.projectDir).href, name: "project" }] }));
-    await client.connect(clientT);
-    rec.client = client;
-    rec.server = server;
-    let start;
-    if (a.start_url) {
-      try {
-        const resp = await page.goto(a.start_url, { timeout: 3e4, waitUntil: "domcontentloaded" });
-        start = { url: page.url(), status: resp?.status(), title: await page.title().catch(() => "") };
-        if (resp?.status() === 403 && (await resp.allHeaders())["cf-mitigated"] === "guardrails") start.blocked = "guardrails: this host is not in allowed_domains";
-      } catch (e) {
-        start = { url: a.start_url, error: mask(e?.message || e).split("\n")[0] };
+    const mode = a.profile_mode || "write";
+    let profile = null;
+    let storageState;
+    const pendingId = `pending-${randomBytes2(4).toString("hex")}`;
+    const label = uniqueLabel(a.label);
+    if (mode !== "none") {
+      profile = (a.profile || cfg.defaultProfile).toLowerCase();
+      checkName(profile);
+      if (mode === "write") {
+        const got = acquireLock(profile, { serverPid: process.pid, nonce: SERVER_NONCE, claudePid: process.ppid, sessionId: pendingId, label, since: (/* @__PURE__ */ new Date()).toISOString(), updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+        if (!got.ok) throw profileInUse(profile, got.holder);
+      } else if (!exists(profile)) {
+        throw new ToolError("PROFILE_NOT_FOUND", `Profile "${profile}" does not exist yet, so there is nothing to open read-only.`, 'Use profile_mode:"none" for an empty browser, or log in first (cf-browser:login).');
       }
+      storageState = loadState(profile);
     }
-    rec.lastActivityAt = Date.now();
-    writeState();
-    return {
-      session_id: id,
+    const idleTimeoutS = Math.min(cfg.plan === "free" ? 300 : 1140, Math.max(60, Math.round(a.idle_timeout_s || cfg.idleTimeoutS)));
+    const guardrails = a.allowed_domains?.length || a.allowed_domain_sets?.length ? { ...a.allowed_domains?.length ? { allowedDomains: a.allowed_domains } : {}, ...a.allowed_domain_sets?.length ? { allowedDomainSets: a.allowed_domain_sets } : {} } : null;
+    let id;
+    try {
+      const r = await rest("POST", "/devtools/browser", { query: { keep_alive: keepAliveMs(idleTimeoutS), recording: !!a.record, lab: !!a.lab }, json: guardrails ? { guardrails } : void 0 });
+      id = r.data?.sessionId;
+      if (!id) throw new ToolError("CLOUDFLARE", `Cloudflare did not return a session id: ${mask(JSON.stringify(r.data)).slice(0, 200)}`);
+    } catch (e) {
+      if (profile && mode === "write") releaseLock(profile, SERVER_NONCE, pendingId);
+      throw e;
+    }
+    const now = Date.now();
+    const rec = {
+      id,
       label,
+      createdAt: now,
+      lastActivityAt: now,
       profile,
-      profile_mode: mode,
-      profile_note: profile ? storageState ? `loaded saved logins (${(storageState.cookies || []).length} cookies)` : "profile is empty; logins made in this browser are saved to it on close" : "throwaway browser, nothing saved",
-      idle_close_after_s: idleTimeoutS,
-      max_age_min: rec.maxAgeMin,
-      recording: rec.recording,
-      lab: rec.lab,
-      guardrails: guardrails || "none",
-      start,
-      warnings: warnings.length ? warnings : void 0,
-      next: "Call browser_snapshot with this session_id to see the page and its element refs. Close with session_close when the task is done."
+      profileMode: mode,
+      recording: !!a.record,
+      lab: !!a.lab,
+      guardrails,
+      idleTimeoutS,
+      maxAgeMin: cfg.maxSessionMin,
+      state: "open",
+      handoff: null,
+      firstSaveDone: false,
+      lastSaveAt: now,
+      chain: Promise.resolve(),
+      inflight: 0
     };
-  } catch (e) {
-    await closeSession(rec, { save: false, reason: "create failed" }).catch(() => {
-    });
-    throw e instanceof ToolError ? e : new ToolError("CREATE_FAILED", `Could not set up the browser: ${mask(e?.message || e).split("\n")[0]}`);
+    records.set(id, rec);
+    unreserve();
+    if (profile && mode === "write") rewriteLock(profile, pendingId, id);
+    writeState();
+    recordSessionStart(id);
+    try {
+      const browser = await chromium.connectOverCDP(await wsUrl(id), { headers: authHeaders(), timeout: 3e4 });
+      rec.browser = browser;
+      browser.on("disconnected", () => onDisconnect(rec));
+      const context = await browser.newContext({ storageState, viewport: { width: 1280, height: 800 } });
+      const page = await context.newPage();
+      for (const c of browser.contexts()) if (c !== context) for (const p of c.pages()) await p.close().catch(() => {
+      });
+      rec.context = context;
+      rec.page = page;
+      rec.cdp = await context.newCDPSession(page);
+      rec.targetId = (await rec.cdp.send("Target.getTargetInfo")).targetInfo.targetId;
+      rec.browserCdp = await browser.newBrowserCDPSession();
+      const server = await createConnection({
+        capabilities: PAGE_CAPABILITIES,
+        codegen: "none",
+        webmcp: !!a.lab,
+        timeouts: { idle: 0 },
+        outputDir: join5(cfg.dataDir, "out", id),
+        filePaths: "absolute",
+        allowUnrestrictedFileAccess: false
+      }, async () => {
+        if (rec.state !== "open") throw new Error("SESSION_CLOSED");
+        return context;
+      });
+      const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverT);
+      const client = new Client({ name: "cf-browser", version: "1" }, { capabilities: { roots: {} } });
+      client.setRequestHandler(ListRootsRequestSchema, async () => ({ roots: [{ uri: pathToFileURL(cfg.projectDir).href, name: "project" }] }));
+      await client.connect(clientT);
+      rec.client = client;
+      rec.server = server;
+      let start;
+      if (a.start_url) {
+        try {
+          const resp = await page.goto(a.start_url, { timeout: 3e4, waitUntil: "domcontentloaded" });
+          start = { url: page.url(), status: resp?.status(), title: await page.title().catch(() => "") };
+          if (resp?.status() === 403 && (await resp.allHeaders())["cf-mitigated"] === "guardrails") start.blocked = "guardrails: this host is not in allowed_domains";
+        } catch (e) {
+          start = { url: a.start_url, error: mask(e?.message || e).split("\n")[0] };
+        }
+      }
+      rec.lastActivityAt = Date.now();
+      writeState();
+      return {
+        session_id: id,
+        label,
+        profile,
+        profile_mode: mode,
+        profile_note: profile ? storageState ? `loaded saved logins (${(storageState.cookies || []).length} cookies)` : "profile is empty; logins made in this browser are saved to it on close" : "throwaway browser, nothing saved",
+        idle_close_after_s: idleTimeoutS,
+        max_age_min: rec.maxAgeMin,
+        recording: rec.recording,
+        lab: rec.lab,
+        guardrails: guardrails || "none",
+        start,
+        warnings: warnings.length ? warnings : void 0,
+        next: "Call browser_snapshot with this session_id to see the page and its element refs. Close with session_close when the task is done."
+      };
+    } catch (e) {
+      await closeSession(rec, { save: false, reason: "create failed" }).catch(() => {
+      });
+      throw e instanceof ToolError ? e : new ToolError("CREATE_FAILED", `Could not set up the browser: ${mask(e?.message || e).split("\n")[0]}`);
+    }
+  } finally {
+    unreserve();
   }
 }
+var creating = 0;
 function rewriteLock(profile, oldSession, newSession) {
   const l = readLock(profile);
   if (!l || l.nonce !== SERVER_NONCE || l.sessionId !== oldSession) return;
@@ -18456,8 +18509,15 @@ async function withSession(id, fn, opts = {}) {
   try {
     await prev;
     if (rec.state !== "open") getRec(id);
+    if (opts.pageTool && handoffActive(rec)) throw new ToolError("HANDOFF_ACTIVE", `A human is using browser ${rec.label} right now (handoff in progress).`, "Call human_wait with this session_id until it reports done; do not ask the user whether they are finished.");
     rec.lastActivityAt = Date.now();
-    const out = await fn(rec);
+    rec.inflight++;
+    let out;
+    try {
+      out = await fn(rec);
+    } finally {
+      rec.inflight--;
+    }
     rec.lastActivityAt = Date.now();
     await ping(rec);
     return out;
@@ -18511,7 +18571,7 @@ async function closeSession(r, o) {
     }
   }
   await finish(r, true);
-  return { saved };
+  return { saved, ...r.remoteCloseUnconfirmed ? { remote_close: `unconfirmed: Cloudflare did not answer the close; with no client connected it ends the browser within ${keepAliveMs(r.idleTimeoutS) / 1e3}s (keep_alive)` } : {} };
 }
 async function finish(r, deleteRemote) {
   await r.client?.close().catch(() => {
@@ -18521,6 +18581,7 @@ async function finish(r, deleteRemote) {
   await r.browser?.close().catch(() => {
   });
   if (deleteRemote) await rest("DELETE", `/devtools/browser/${r.id}`, { allow404: true, timeoutMs: 1e4 }).catch(() => {
+    r.remoteCloseUnconfirmed = true;
   });
   r.state = "closed";
   r.closedAt = Date.now();
@@ -18548,10 +18609,11 @@ async function reapTick() {
   const now = Date.now();
   for (const r of own2()) {
     if (r.state !== "open") continue;
+    if (r.profile && r.profileMode === "write") touchLock(r.profile, SERVER_NONCE, r.id);
     if (r.handoff && !r.handoff.result) {
       await ping(r);
       try {
-        const s = await r.cdp.send("Cloudflare.getHandoffState", { targetId: r.targetId });
+        const s = await (r.hcdp || r.cdp).send("Cloudflare.getHandoffState", { targetId: r.htarget || r.targetId });
         if (!s.active && !r.handoff.result) r.handoff.result = { status: "ended", at: Date.now() };
       } catch {
       }
@@ -18559,7 +18621,7 @@ async function reapTick() {
       if (!r.handoff.result) continue;
       r.lastActivityAt = now;
     }
-    if (now - r.lastActivityAt >= r.idleTimeoutS * 1e3) {
+    if (r.inflight === 0 && now - r.lastActivityAt >= r.idleTimeoutS * 1e3) {
       await closeSession(r, { save: true, reason: `idle for ${r.idleTimeoutS}s` });
       continue;
     }
@@ -18571,7 +18633,6 @@ async function reapTick() {
       await saveProfile(r).catch(() => {
       });
     }
-    if (r.profile && r.profileMode === "write") touchLock(r.profile, SERVER_NONCE, r.id);
   }
   writeState();
 }
@@ -18944,14 +19005,20 @@ var tools = [
     handler: (a) => withSession(a.session_id, async (r) => {
       if (handoffActive(r)) throw new ToolError("HANDOFF_ACTIVE", `A handoff is already active on ${r.label}.`, "Call human_wait.");
       const timeoutMs = Math.min(30, Math.max(1, a.timeout_minutes || 10)) * 6e4;
-      const lv = await r.cdp.send("Cloudflare.getLiveView", { mode: "tab", targetId: r.targetId, expiresInMs: Math.max(6e4, timeoutMs) });
-      if (!r.handoffListener) {
-        r.handoffListener = true;
-        r.cdp.on("Cloudflare.handoffComplete", (p) => {
+      const pages = r.context.pages().filter((p) => !p.isClosed());
+      const page = [r.currentPage, r.page].find((p) => p && !p.isClosed()) || pages[pages.length - 1];
+      if (!page) throw new ToolError("NO_TAB", `Browser ${r.label} has no open tab.`, "browser_navigate to the login page first.");
+      if (page !== r.hpage) {
+        const cdp = page === r.page ? r.cdp : await r.context.newCDPSession(page);
+        r.htarget = page === r.page ? r.targetId : (await cdp.send("Target.getTargetInfo")).targetInfo.targetId;
+        cdp.on("Cloudflare.handoffComplete", (p) => {
           if (r.handoff && !r.handoff.result) r.handoff.result = { status: p?.success === false ? "failed" : "done", reason: p?.reason, at: Date.now() };
         });
+        r.hcdp = cdp;
+        r.hpage = page;
       }
-      const h = await r.cdp.send("Cloudflare.handoff", { targetId: r.targetId, instructions: a.instructions, timeout: timeoutMs });
+      const lv = await r.hcdp.send("Cloudflare.getLiveView", { mode: "tab", targetId: r.htarget, expiresInMs: Math.max(6e4, timeoutMs) });
+      const h = await r.hcdp.send("Cloudflare.handoff", { targetId: r.htarget, instructions: a.instructions, timeout: timeoutMs });
       r.handoff = { id: h.handoffId, startedAt: Date.now(), timeoutMs, instructions: a.instructions, result: null };
       const opened = openLocally(lv.devtoolsFrontendUrl);
       return {
@@ -18976,7 +19043,7 @@ var tools = [
       const deadline = Date.now() + Math.min(55, Math.max(1, a.wait_seconds || 50)) * 1e3;
       while (!h.result && Date.now() < deadline && r.state === "open") {
         try {
-          const s = await r.cdp.send("Cloudflare.getHandoffState", { targetId: r.targetId });
+          const s = await (r.hcdp || r.cdp).send("Cloudflare.getHandoffState", { targetId: r.htarget || r.targetId });
           if (!s.active && !h.result) h.result = { status: "ended", at: Date.now() };
         } catch {
         }
@@ -19146,6 +19213,10 @@ async function callPageTool(name, args) {
   pw();
   return withSession(String(session_id), async (r) => {
     const res = await r.client.callTool({ name, arguments: rest2 }, void 0, { timeout: 18e4 });
+    const text2 = (res.content || []).map((c) => c.type === "text" ? c.text : "").join("\n");
+    const cur = /^- (\d+): \(current\)/m.exec(text2);
+    const tabs = r.context.pages();
+    r.currentPage = cur ? tabs[Number(cur[1])] : tabs.length === 1 ? tabs[0] : r.currentPage;
     const allowed = r.guardrails?.allowedDomains;
     if (allowed && name === "browser_navigate" && /HTTP status: 403/.test(JSON.stringify(res.content))) {
       let host = "";

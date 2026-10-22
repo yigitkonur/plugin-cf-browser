@@ -1,4 +1,4 @@
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeSync, chmodSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, writeSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { cfg } from './config.js';
@@ -119,7 +119,7 @@ export function isStale(l: LockInfo): boolean {
 export function acquireLock(name: string, info: LockInfo): { ok: true } | { ok: false; holder: LockInfo } {
   ensureDir(root()); ensureDir(profileDir(name));
   const path = join(profileDir(name), 'lock.json');
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const fd = openSync(path, 'wx', 0o600);
       try { writeSync(fd, JSON.stringify(info)); fsyncSync(fd); } finally { closeSync(fd); }
@@ -128,9 +128,19 @@ export function acquireLock(name: string, info: LockInfo): { ok: true } | { ok: 
       if (e?.code !== 'EEXIST') throw e;
       const holder = readLock(name);
       if (holder && !isStale(holder)) return { ok: false, holder };
-      // Stale (or unreadable): move it aside; whoever wins the rename takes the lock, the loser retries.
-      try { renameSync(path, join(profileDir(name), `lock.stale-${info.nonce}`)); } catch { /* lost the race */ }
-      try { unlinkSync(join(profileDir(name), `lock.stale-${info.nonce}`)); } catch { /* already gone */ }
+      // Stale (or unreadable): take it over only while holding the takeover guard (atomic mkdir), and only if it is
+      // still the same stale lock once inside, so a fresh lock another window just took is never removed.
+      const guard = join(profileDir(name), 'lock.takeover');
+      try { mkdirSync(guard, { mode: 0o700 }); } catch {
+        try { if (Date.now() - statSync(guard).mtimeMs > 10000) rmdirSync(guard); } catch { /* gone */ }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+        continue;
+      }
+      try {
+        const again = readLock(name);
+        if (again && !isStale(again)) return { ok: false, holder: again };
+        if (JSON.stringify(again) === JSON.stringify(holder)) try { unlinkSync(path); } catch { /* gone */ }
+      } finally { try { rmdirSync(guard); } catch { /* gone */ } }
     }
   }
   const holder = readLock(name);
