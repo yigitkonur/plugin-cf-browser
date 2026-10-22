@@ -32,3 +32,10 @@
 - Handoff heartbeat kept: an active handoff does not keep a session alive by itself (CF10).
 - `replay.html` loads rrweb-player from unpkg, not jsDelivr: jsDelivr serves the UMD build as `application/node` with `nosniff` (CF19).
 - A guardrails 403 on `browser_navigate` gets an explicit note, so the agent does not mistake its own allowlist for the site blocking it.
+
+## Codex (1.1.0)
+- **Same repo, same plugin folder, one server.** Codex reads `.agents/plugins/marketplace.json` and `.codex-plugin/plugin.json`; Claude Code reads `.claude-plugin/`. The skills and hook scripts are shared; Codex gets its own MCP file (`.codex-mcp.json`) and hooks file (`hooks/codex-hooks.json`) because the formats differ (Codex hook commands are shell strings with `${PLUGIN_ROOT}`; its MCP file uses `cwd` and `env_vars`).
+- **Server name `cf_browser` in Codex**: Codex ships its own `browser` plugin.
+- **Credentials in `~/.cf-browser/.env`**: Codex has no plugin settings. The file sits next to the profiles, which the guard hook already keeps the agent away from; the guard now covers the file itself.
+- **Watchdog instead of trusting the exit path**: Codex sends SIGTERM and kills the server moments later, before it can close anything (seen live: SIGTERM logged, no exit). A detached watchdog in its own process group runs the existing crash sweep when the server is gone. It costs one idle Node process per agent window.
+- **No project folder in Codex**: Codex starts plugin servers in the plugin folder and sends no MCP roots, so uploads are limited to the temp folder there rather than guessing.

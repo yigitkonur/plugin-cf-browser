@@ -50,3 +50,23 @@ Server driven over stdio with `mcpc` 0.7.0 against the Workers Paid account; the
 | L14 | WebMCP | lab browser lists and runs page tools | demo page registered 3 tools; `webmcp_call search_location {"location":"Paris"}` navigated to the Paris results |
 | L15 | Guards | profiles folder and token denied; `~/.ssh` upload denied; primer present | `scripts/hook-smoke.sh` 9/9 ok; `browser_file_upload` of `~/.ssh/id_ed25519` → `UPLOAD_DENIED`; a project file uploaded |
 | L16 | Install from GitHub | `plugin details` shows 6 skills, 3 hooks, 1 MCP server; L1/L2/L7/L8 on the installed copy | clean `CLAUDE_CONFIG_DIR`, README commands: `Skills (6) browse, login, profiles, replay, sessions, setup`, `Hooks (4) SessionStart, SubagentStart, PreToolUse, Stop` (3 scripts), `MCP servers (1) browser`; first start installed `deps/<hash>/node_modules/.complete`, 49 tools; `/cf-browser:browse` HN → `page_read` (kitesurf) + screenshot, 5 titles, nothing open; `/cf-browser:login` → handoff, `human_wait` pending ×N then `done: User clicked 'Done'`, `main` saved, snapshot shows Logout; a browse task loaded `main` (5 cookies) and saw "Welcome to the Secure Area" |
+
+## Codex (1.1.0, codex-cli 0.163.0, 2026-10-22)
+
+| # | Claim | How it was checked | Result |
+|---|---|---|---|
+| CX1 | Codex installs the plugin from this repo's `.agents/plugins/marketplace.json`; the `.claude-plugin/` folder beside it does no harm | `codex plugin marketplace add <repo>`, `codex plugin add cf-browser@plugin-cf-browser` | `cf-browser@plugin-cf-browser installed, enabled`; cached under `~/.codex/plugins/cache/plugin-cf-browser/cf-browser/<version>` |
+| CX2 | Codex starts plugin MCP servers with the plugin folder as cwd, passes `env_vars`, sets no `PLUGIN_*`/`CLAUDE_*` variables, and sends no MCP roots | process cwd and environment of the running server; an upload of a project file | cwd = the cached plugin folder; `CF_*` present only when listed in `env_vars`; project file upload refused (no roots) |
+| CX3 | `codex exec` calls plugin MCP tools without prompts | `codex exec` (approval `never`) | `mcp: cf_browser/session_list (completed)`, `page_read` → `kitesurf` |
+| CX4 | Codex plugin hooks run only after the user trusts them; `${PLUGIN_ROOT}` is expanded; trust is stored per hook in `config.toml` | TUI "Hooks need review: 4 hooks are new or changed" → trust all | `[hooks.state."cf-browser@plugin-cf-browser:hooks/codex-hooks.json:pre_tool_use:0:0"] trusted_hash = …`; the review showed `node "/Users/…/cf-browser/1.1.0/hooks/guard.mjs" --host=codex` |
+| CX5 | Codex shows a Stop hook's `systemMessage` to the user | open a browser, end the turn | `↳ Hook · cf-browser: 1 browser open (keepme); idle ones close automatically in ≤5 min, and all close when Codex exits.` |
+| CX6 | At exit Codex sends SIGTERM and kills the server before it can finish closing anything | signal log in the installed launcher | `got SIGTERM`, `stdin end`, no `exit` line; the browser stayed open at Cloudflare until swept |
+
+| # | Behavior | Expect | Saw |
+|---|---|---|---|
+| L17 | Codex credentials from `~/.cf-browser/.env` | tools work with no `CF_*` in the environment | `session_list` → `{"this_window": []}`; `usage_report` budget 120 |
+| L18 | Codex: read a page and drive a browser | HN titles via Kitesurf; open, snapshot, close; nothing left | 5 titles, `engine: kitesurf`; session on `/upload`, snapshot "The Internet", `"closed": true`; Cloudflare `[]` |
+| L19 | Codex: login handoff | handoff → tester logs in → done → `main` saved → Logout seen | login skill ran `human_handoff`, `human_wait` until done, snapshot showed "You logged into a secure area!" and Logout, `session_close` saved `main` |
+| L20 | Codex: hooks | primer in context; guard blocks the profiles folder | model quoted "[cf-browser] Cloudflare Browser Run browsers are available (the cf_browser MCP tools)."; `cat ~/.cf-browser/profiles/main/state.json` → "Blocked by hook" |
+| L21 | Codex exit closes browsers | `/quit` with a browser open → closed within seconds | with the watchdog: `/quit` at 07:21:29, Cloudflare `open=0` at 07:21:31; watchdog exited, no state file left |
+| L22 | No credentials anywhere | the error names the `.env` path | `cf-browser is not configured (account_id and api_token missing). Put CF_ACCOUNT_ID and CF_API_TOKEN in <CFB_HOME>/.env (mode 600), or in Claude Code run: …` |

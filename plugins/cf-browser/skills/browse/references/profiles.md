@@ -19,7 +19,7 @@ A write-mode browser holds the profile's lock. A second write open fails with `P
 Locks of crashed runs go stale after 2 minutes and are taken over automatically.
 
 ## Separate profiles
-For a second account on the same site, another person, or a site that signs out parallel sessions: `profile_create <name>` and log in inside it (`/cf-browser:login`, choosing that profile). A fresh login is an independent session; a clone shares the original's session cookies.
+For a second account on the same site, another person, or a site that signs out parallel sessions: `profile_create <name>` and log in inside it (the cf-browser login skill, choosing that profile). A fresh login is an independent session; a clone shares the original's session cookies.
 
 ## Bad saves
 If the site showed you signed out or broken, close with `save_profile: false`. If a bad state was saved already: `profile_restore_previous <name>` swaps in the backup (the first save of every browser keeps the previous state as backup).

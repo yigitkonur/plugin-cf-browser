@@ -1,0 +1,18 @@
+{
+  "description": "cf-browser for Codex: primer, stop notice (non-blocking), guard for saved logins, the credentials file and the API token",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "node \"${PLUGIN_ROOT}/hooks/primer.mjs\" session --host=codex", "timeout": 10 } ] }
+    ],
+    "SubagentStart": [
+      { "hooks": [ { "type": "command", "command": "node \"${PLUGIN_ROOT}/hooks/primer.mjs\" subagent --host=codex", "timeout": 10 } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "^(Bash|apply_patch|Edit|Write)$",
+        "hooks": [ { "type": "command", "command": "node \"${PLUGIN_ROOT}/hooks/guard.mjs\" --host=codex", "timeout": 10 } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "node \"${PLUGIN_ROOT}/hooks/stop-notice.mjs\" --host=codex", "timeout": 10 } ] }
+    ]
+  }
+}

@@ -13,9 +13,13 @@ const [maj, min] = process.versions.node.split('.').map(Number);
 if (maj < 20 || (maj === 20 && min < 19)) { log(`needs Node 20.19 or newer (found ${process.versions.node})`); process.exit(1); }
 
 const here = dirname(fileURLToPath(import.meta.url));
+if (process.argv[2] === '--watch') {
+  const { watch } = await import(pathToFileURL(join(here, 'dist', 'server.mjs')).href);
+  await watch(Number(process.argv[3]), process.argv[4]);
+}
 const lock = join(here, 'package-lock.json');
 const h = createHash('sha256').update(readFileSync(lock)).digest('hex').slice(0, 12);
-const dataEnv = process.env.CLAUDE_PLUGIN_DATA;
+const dataEnv = [process.env.PLUGIN_DATA, process.env.CLAUDE_PLUGIN_DATA].find(v => v && !v.startsWith('${'));
 const dataDir = dataEnv && !dataEnv.startsWith('${') ? dataEnv : join(homedir(), '.cf-browser', 'data');
 const depsRoot = join(dataDir, 'deps');
 const final = join(depsRoot, h);

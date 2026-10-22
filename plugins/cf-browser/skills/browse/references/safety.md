@@ -2,7 +2,7 @@
 
 ## Secrets never go through chat or tool input
 - Tool inputs and results are stored in the transcript. Never put a password, one-time code, recovery code, card number or API key into `browser_type`, `browser_fill_form`, `browser_evaluate` or any other input.
-- Logins go through `human_handoff` (or `/cf-browser:login`): the user types into the page on their own screen.
+- Logins go through `human_handoff` (or the cf-browser login skill): the user types into the page on their own screen.
 - If the user pastes a password into chat anyway: do not use it in any tool call. Say it is now in the transcript and suggest changing it if it is real.
 - The Cloudflare API token lives in the MCP server's environment. Never print it, write it, or pass it anywhere; the guard hook denies Bash/Read/Write calls that contain it.
 

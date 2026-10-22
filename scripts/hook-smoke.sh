@@ -18,4 +18,10 @@ printf '{"serverPid":%s,"claudePid":%s,"sessions":[{"id":"a","label":"shop","sta
 check "stop notice when a browser is open" "$(echo '{"session_id":"s1"}' | CLAUDE_PLUGIN_DATA="$tmp" node stop-notice.mjs)" 'systemMessage'
 none  "stop notice only once per set" "$(echo '{"session_id":"s1"}' | CLAUDE_PLUGIN_DATA="$tmp" node stop-notice.mjs)"
 rm -rf "$tmp"
+# Codex: hooks run with --host=codex and read credentials from <CFB_HOME>/.env
+ch="$(mktemp -d)"; printf 'CF_ACCOUNT_ID=0123456789abcdef0123456789abcdef\nCF_API_TOKEN=codex_smoke_token_0123456789abcdef\n' > "$ch/.env"
+check "codex primer names cf_browser tools" "$(echo '{}' | env -u CLAUDE_PLUGIN_OPTION_API_TOKEN CFB_HOME="$ch" node primer.mjs session --host=codex)" 'cf_browser MCP tools'
+check "codex guard denies token from .env" "$(echo '{"tool_name":"Bash","tool_input":{"command":"echo codex_smoke_token_0123456789abcdef"}}' | env -u CLAUDE_PLUGIN_OPTION_API_TOKEN CFB_HOME="$ch" node guard.mjs --host=codex)" 'API token'
+check "codex guard denies the .env file" "$(echo '{"tool_name":"apply_patch","tool_input":{"command":"*** Update File: '"$ch"'/.env"}}' | env -u CLAUDE_PLUGIN_OPTION_API_TOKEN CFB_HOME="$ch" node guard.mjs --host=codex)" '"deny"'
+rm -rf "$ch"
 exit $fail

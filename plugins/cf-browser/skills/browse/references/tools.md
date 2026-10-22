@@ -41,5 +41,5 @@ Refs: element arguments take `target`, the `ref` from the latest snapshot (e.g. 
 | `TOO_MANY_SESSIONS` | Reuse an open browser or close one |
 | `BUDGET_EXCEEDED` | Ask the user before `confirm_over_budget: true` |
 | `RATE_LIMITED` | Wait the given time, retry once; never loop |
-| `AUTH` | Token or account id problem: `/cf-browser:setup` |
+| `AUTH` | Token or account id problem: the cf-browser setup skill |
 | `UPLOAD_DENIED` | The file is outside the project/temp folder or is a dotfile; ask the user |

@@ -3,7 +3,7 @@
 // set of open browsers that they are still open and close themselves when idle. Never blocks the agent.
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { off, readStdin, emit, dataDir, parentPids, pidAlive } from './lib.mjs';
+import { off, readStdin, emit, dataDir, parentPids, pidAlive, codex } from './lib.mjs';
 
 try {
   if (!off()) {
@@ -28,7 +28,7 @@ try {
         writeFileSync(marker, key);
         const labels = open.map(x => x.label).join(', ');
         const mins = Math.max(1, Math.round(idle / 60));
-        emit({ systemMessage: `cf-browser: ${open.length} browser${open.length > 1 ? 's' : ''} open (${labels}); idle ones close automatically in ≤${mins} min, and all close when Claude Code exits.` });
+        emit({ systemMessage: `cf-browser: ${open.length} browser${open.length > 1 ? 's' : ''} open (${labels}); idle ones close automatically in ≤${mins} min, and all close when ${codex ? 'Codex' : 'Claude Code'} exits.` });
       }
     }
   }

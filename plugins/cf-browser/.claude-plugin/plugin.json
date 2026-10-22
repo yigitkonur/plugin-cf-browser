@@ -1,6 +1,6 @@
 {
   "name": "cf-browser",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Give Claude Code a real cloud browser on Cloudflare Browser Run: saved logins in an everyday profile, human handoff for logins and 2FA through Live View, a daily budget, and browsers that close themselves so nothing keeps billing.",
   "author": {
     "name": "yigitkonur",
@@ -9,7 +9,17 @@
   "homepage": "https://github.com/yigitkonur/plugin-cf-browser",
   "repository": "https://github.com/yigitkonur/plugin-cf-browser",
   "license": "MIT",
-  "keywords": ["cloudflare", "browser-run", "browser-rendering", "cloud-browser", "browser-agent", "web-automation", "mcp", "live-view", "human-in-the-loop"],
+  "keywords": [
+    "cloudflare",
+    "browser-run",
+    "browser-rendering",
+    "cloud-browser",
+    "browser-agent",
+    "web-automation",
+    "mcp",
+    "live-view",
+    "human-in-the-loop"
+  ],
   "userConfig": {
     "account_id": {
       "type": "string",

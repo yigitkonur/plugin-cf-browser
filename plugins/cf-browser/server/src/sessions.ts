@@ -1,5 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -34,6 +35,7 @@ export const own = () => [...records.values()].filter(r => r.state !== 'closed')
 
 const stateDir = () => join(cfg.dataDir, 'state', 'servers');
 const stateFile = () => join(stateDir(), `${process.pid}-${SERVER_NONCE}.json`);
+export const stateFilePath = stateFile;
 
 export function writeState() {
   try {
@@ -181,7 +183,7 @@ export async function createSession(a: CreateArgs) {
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
     await server.connect(serverT);
     const client = new Client({ name: 'cf-browser', version: '1' }, { capabilities: { roots: {} } });
-    client.setRequestHandler(ListRootsRequestSchema, async () => ({ roots: [{ uri: pathToFileURL(cfg.projectDir).href, name: 'project' }] }));
+    client.setRequestHandler(ListRootsRequestSchema, async () => ({ roots: [{ uri: pathToFileURL(cfg.projectDir || tmpdir()).href, name: 'project' }] }));
     await client.connect(clientT);
     rec.client = client; rec.server = server;
 
@@ -219,7 +221,7 @@ function rewriteLock(profile: string, oldSession: string, newSession: string) {
 }
 
 export function profileInUse(profile: string, h: profiles.LockInfo) {
-  const where = h.serverPid === process.pid ? 'this Claude Code window' : 'another Claude Code window';
+  const where = h.serverPid === process.pid ? 'this session' : 'another agent session on this computer';
   const since = h.since ? ago(Date.now() - Date.parse(h.since)) : '?';
   return new ToolError('PROFILE_IN_USE',
     `Profile "${profile}" is already open in browser ${h.label} (since ${since}, in ${where}). Two browsers saving one profile overwrite each other's logins. Choose:\n` +
@@ -361,7 +363,7 @@ export async function shutdown(why: string) {
   if (reaper) clearInterval(reaper);
   const open = own();
   process.stderr.write(`[cf-browser] ${why}: closing ${open.length} browser(s)\n`);
-  await Promise.race([Promise.all(open.map(r => closeSession(r, { save: true, reason: 'Claude Code exited' }).catch(() => {}))), sleep(4000)]);
+  await Promise.race([Promise.all(open.map(r => closeSession(r, { save: true, reason: 'the agent session ended' }).catch(() => {}))), sleep(4000)]);
   const left = open.filter(r => r.state !== 'closed');
   await Promise.race([Promise.all(left.map(r => rest('DELETE', `/devtools/browser/${r.id}`, { allow404: true, timeoutMs: 3000 }).then(() => {
     r.state = 'closed'; r.closedAt = Date.now();
