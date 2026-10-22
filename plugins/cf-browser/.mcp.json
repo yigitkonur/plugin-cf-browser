@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "browser": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/launch.mjs"],
+      "env": {
+        "CF_ACCOUNT_ID": "${user_config.account_id}",
+        "CF_API_TOKEN": "${user_config.api_token}",
+        "CFB_PLAN": "${user_config.plan}",
+        "CFB_DEFAULT_PROFILE": "${user_config.default_profile}",
+        "CFB_IDLE_TIMEOUT_S": "${user_config.idle_timeout_seconds}",
+        "CFB_MAX_SESSION_MIN": "${user_config.max_session_minutes}",
+        "CFB_MAX_CONCURRENT": "${user_config.max_concurrent_sessions}",
+        "CFB_DAILY_BUDGET_MIN": "${user_config.daily_budget_minutes}",
+        "CFB_OPEN_LIVE_VIEW": "${user_config.open_live_view_locally}",
+        "CFB_HOME": "${user_config.profiles_dir}"
+      }
+    }
+  }
+}
