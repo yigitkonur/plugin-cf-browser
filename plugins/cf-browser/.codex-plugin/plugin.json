@@ -1,0 +1,38 @@
+{
+  "name": "cf-browser",
+  "version": "1.1.0",
+  "description": "A real cloud browser on Cloudflare Browser Run: saved logins in an everyday profile, human handoff for logins and 2FA through Live View, a daily budget, and browsers that close themselves so nothing keeps billing.",
+  "author": {
+    "name": "yigitkonur",
+    "url": "https://github.com/yigitkonur"
+  },
+  "homepage": "https://github.com/yigitkonur/plugin-cf-browser",
+  "repository": "https://github.com/yigitkonur/plugin-cf-browser",
+  "license": "MIT",
+  "keywords": [
+    "cloudflare",
+    "browser-run",
+    "cloud-browser",
+    "browser-agent",
+    "web-automation",
+    "mcp",
+    "live-view",
+    "human-in-the-loop"
+  ],
+  "interface": {
+    "displayName": "cf-browser",
+    "shortDescription": "Cloud browser on Cloudflare Browser Run",
+    "longDescription": "Drive a real Chromium in Cloudflare Browser Run. Logins are kept in an everyday profile, you log in yourself through a Live View handoff (the agent never types passwords), you can watch read-only before submits, and browsers close themselves when idle, at a max age and when Codex exits. Also Quick Actions with Kitesurf, crawls, recordings with a replay page, guardrails and WebMCP.",
+    "developerName": "yigitkonur",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/yigitkonur/plugin-cf-browser"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.codex-mcp.json",
+  "hooks": "./hooks/codex-hooks.json"
+}

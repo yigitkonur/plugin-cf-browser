@@ -1,5 +1,13 @@
 # changelog
 
+## cf-browser 1.1.0 (2026-10-22)
+
+- Codex plugin from the same repo: `.agents/plugins/marketplace.json`, `.codex-plugin/plugin.json`, MCP server `cf_browser` (`.codex-mcp.json`) and Codex hooks (`hooks/codex-hooks.json`).
+- Credentials and settings from `~/.cf-browser/.env` (or `$CFB_HOME/.env`) when the host does not set them; the guard hook protects that file too.
+- A detached watchdog closes a server's browsers within seconds when the host kills the server without letting it shut down (Codex does at exit).
+- The upload guard never treats the plugin folder as the project; without a project folder from the host, uploads take files from the temp folder.
+- Texts and skills name both hosts.
+
 ## cf-browser 1.0.0 (2026-10-22)
 
 First release.

@@ -1,6 +1,6 @@
 # plugin-cf-browser
 
-a claude code plugin that gives your agents a real browser on [cloudflare browser run](https://developers.cloudflare.com/browser-run/) (the thing that used to be called browser rendering). the browser runs in cloudflare's cloud, your laptop just runs claude code.
+a claude code and codex plugin that gives your agents a real browser on [cloudflare browser run](https://developers.cloudflare.com/browser-run/) (the thing that used to be called browser rendering). the browser runs in cloudflare's cloud, your laptop just runs claude code or codex.
 
 what you get:
 
@@ -25,6 +25,8 @@ printf '{"account_id":"%s","api_token":"%s"}' "$CF_ACCOUNT_ID" "$CF_API_TOKEN" \
   | claude plugin configure cf-browser@plugin-cf-browser --values-stdin
 ```
 
+or skip that and put `CF_ACCOUNT_ID` and `CF_API_TOKEN` in `~/.cf-browser/.env` (the file codex uses, see below); `/plugin` values win when both are set.
+
 restart claude code. run `/cf-browser:setup` once: it checks everything and asks how you want logins kept.
 
 prefer the classic two-step?
@@ -41,6 +43,32 @@ claude plugin details cf-browser
 claude plugin marketplace update plugin-cf-browser && claude plugin update cf-browser@plugin-cf-browser
 claude plugin uninstall cf-browser@plugin-cf-browser
 ```
+
+### use it in codex
+
+the same repo is a codex plugin marketplace too (codex 0.163+):
+
+```sh
+codex plugin marketplace add yigitkonur/plugin-cf-browser
+codex plugin add cf-browser@plugin-cf-browser
+```
+
+codex has no plugin settings, so the credentials go in `~/.cf-browser/.env` (the claude code install reads it too when `/plugin` leaves them unset):
+
+```sh
+mkdir -p ~/.cf-browser && umask 077 && printf 'CF_ACCOUNT_ID=%s\nCF_API_TOKEN=%s\n' "$CF_ACCOUNT_ID" "$CF_API_TOKEN" > ~/.cf-browser/.env
+```
+
+optional settings go in the same file with the same names as the claude options: `CFB_PLAN`, `CFB_IDLE_TIMEOUT_S`, `CFB_MAX_SESSION_MIN`, `CFB_MAX_CONCURRENT`, `CFB_DAILY_BUDGET_MIN`, `CFB_OPEN_LIVE_VIEW`, `CFB_DEFAULT_PROFILE`.
+
+start a new codex session. codex asks you to review the plugin's 4 hooks once (primer, guard, stop notice): pick "trust all". to stop codex asking before every browser tool, add this to `~/.codex/config.toml`:
+
+```toml
+[plugins."cf-browser@plugin-cf-browser".mcp_servers.cf_browser]
+default_tools_approval_mode = "approve"
+```
+
+in codex the tools are `cf_browser.*` and the skills are the same six. two differences: codex doesn't tell plugins your project folder, so uploads only take files from the temp folder; and codex kills plugin servers at exit, so a small watchdog process closes your browsers right after (a profile save that was due at that moment is skipped; autosave runs every 5 minutes).
 
 ### what you need
 

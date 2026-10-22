@@ -20,8 +20,8 @@ Tools are the cf-browser MCP tools (`mcp__plugin_cf-browser_browser__<tool>`).
 
 ## Step 1. Where should the login live (ask the user)
 1. `profile_list`.
-2. If no profile exists yet (first use), ask with AskUserQuestion: "Your Cloudflare browser can remember logins. Use one everyday profile `main` for everything (recommended), or separate profiles per account?" Options: Everyday profile (Recommended) / Separate profiles per account.
-3. Always ask, with AskUserQuestion: "Save your <site> login into your everyday profile `main`?" Options: Yes, everyday profile (Recommended) / Separate profile `<site>-<account>` / Don't save (this browser only).
+2. If no profile exists yet (first use), ask the user (AskUserQuestion in Claude Code): "Your Cloudflare browser can remember logins. Use one everyday profile `main` for everything (recommended), or separate profiles per account?" Options: Everyday profile (Recommended) / Separate profiles per account.
+3. Always ask the user (AskUserQuestion in Claude Code): "Save your <site> login into your everyday profile `main`?" Options: Yes, everyday profile (Recommended) / Separate profile `<site>-<account>` / Don't save (this browser only).
    - Everyday: `profile` unset, mode write.
    - Separate: `profile_create` with a name like `github-work` (lowercase, `a-z0-9._-`), then use it in write mode.
    - Don't save: `profile_mode: "none"`.

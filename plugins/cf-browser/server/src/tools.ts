@@ -51,16 +51,19 @@ function guardUpload(paths: unknown): string[] {
   if (!Array.isArray(paths)) return [];
   const ok: string[] = [];
   const real = (p: string) => { try { return realpathSync(p); } catch { return resolve(p); } };
-  const roots = [real(cfg.projectDir), real(tmpdir()), real('/tmp')];
+  const roots = [cfg.projectDir && real(cfg.projectDir), real(tmpdir()), real('/tmp')].filter(Boolean) as string[];
   const denied = [real(cfg.home), real(cfg.dataDir), real(join(homedir(), 'Library', 'Keychains'))];
   for (const raw of paths) {
     let p: string;
-    try { p = realpathSync(resolve(cfg.projectDir, String(raw))); } catch { throw new ToolError('UPLOAD_DENIED', `File not found: ${raw}`); }
+    try { p = realpathSync(resolve(cfg.projectDir || tmpdir(), String(raw))); } catch { throw new ToolError('UPLOAD_DENIED', `File not found: ${raw}`); }
     const under = (root: string) => p === root || p.startsWith(root.endsWith(sep) ? root : root + sep);
     const parts = p.split(sep).filter(Boolean);
     if (parts.some(x => x.startsWith('.'))) throw new ToolError('UPLOAD_DENIED', `Refusing to upload ${raw}: dotfiles and files in dot-directories (.ssh, .env, .git, .claude, …) never leave this machine.`);
     if (denied.some(under)) throw new ToolError('UPLOAD_DENIED', `Refusing to upload ${raw}: it is in the cf-browser profile or data folder.`);
-    if (!roots.some(under)) throw new ToolError('UPLOAD_DENIED', `Refusing to upload ${raw}: only files inside the project folder or the system temp folder can be uploaded.`, 'Ask the user to copy the file into the project folder first if they really want it uploaded.');
+    if (!roots.some(under)) {
+      if (!cfg.projectDir) throw new ToolError('UPLOAD_DENIED', `Refusing to upload ${raw}: this host does not tell cf-browser the project folder, so only files in the temp folder (${tmpdir()}) can be uploaded.`, `Copy the file into ${tmpdir()} first and upload that copy (ask the user before copying anything sensitive).`);
+      throw new ToolError('UPLOAD_DENIED', `Refusing to upload ${raw}: only files inside the project folder or the system temp folder can be uploaded.`, 'Ask the user to copy the file into the project folder first if they really want it uploaded.');
+    }
     ok.push(p);
   }
   return ok;

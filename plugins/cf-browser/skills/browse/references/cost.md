@@ -20,7 +20,7 @@ Prices from Cloudflare's Browser Run pricing and limits pages, 2026-10-22. Check
 Example: a 4-minute task in one browser = 4 browser-minutes. Twenty such tasks a day ≈ 80 min/day ≈ 40 h/month → (40 − 10) × $0.09 ≈ $2.70/month on Paid, plus nothing for concurrency while you stay at ≤ 10 browsers.
 
 ## What the plugin does about it
-- Closes a browser after `idle_timeout_seconds` (default 300) of no tool calls, at `max_session_minutes` (default 30, not during a handoff), when Claude Code exits, and leftovers of a crashed run on the next start. Cloudflare's own `keep_alive` (idle + 60 s) is the backstop if everything else dies.
+- Closes a browser after `idle_timeout_seconds` (default 300) of no tool calls, at `max_session_minutes` (default 30, not during a handoff), when the Claude Code or Codex session exits, and leftovers of a crashed run on the next start. Cloudflare's own `keep_alive` (idle + 60 s) is the backstop if everything else dies.
 - Refuses new browsers past `max_concurrent_sessions` per window and past `daily_budget_minutes` (UTC day) unless the user confirms.
 - `usage_report` shows this machine's minutes; the Cloudflare dashboard (Browser Run) is the account-wide truth — there is no usage API, so the plugin cannot see other machines.
 

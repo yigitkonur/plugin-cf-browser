@@ -1,5 +1,6 @@
-import { mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -34,6 +35,7 @@ export const own = () => [...records.values()].filter(r => r.state !== 'closed')
 
 const stateDir = () => join(cfg.dataDir, 'state', 'servers');
 const stateFile = () => join(stateDir(), `${process.pid}-${SERVER_NONCE}.json`);
+export const stateFilePath = stateFile;
 
 export function writeState() {
   try {
@@ -181,7 +183,7 @@ export async function createSession(a: CreateArgs) {
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
     await server.connect(serverT);
     const client = new Client({ name: 'cf-browser', version: '1' }, { capabilities: { roots: {} } });
-    client.setRequestHandler(ListRootsRequestSchema, async () => ({ roots: [{ uri: pathToFileURL(cfg.projectDir).href, name: 'project' }] }));
+    client.setRequestHandler(ListRootsRequestSchema, async () => ({ roots: [{ uri: pathToFileURL(cfg.projectDir || tmpdir()).href, name: 'project' }] }));
     await client.connect(clientT);
     rec.client = client; rec.server = server;
 
@@ -219,7 +221,7 @@ function rewriteLock(profile: string, oldSession: string, newSession: string) {
 }
 
 export function profileInUse(profile: string, h: profiles.LockInfo) {
-  const where = h.serverPid === process.pid ? 'this Claude Code window' : 'another Claude Code window';
+  const where = h.serverPid === process.pid ? 'this session' : 'another agent session on this computer';
   const since = h.since ? ago(Date.now() - Date.parse(h.since)) : '?';
   return new ToolError('PROFILE_IN_USE',
     `Profile "${profile}" is already open in browser ${h.label} (since ${since}, in ${where}). Two browsers saving one profile overwrite each other's logins. Choose:\n` +
@@ -361,7 +363,7 @@ export async function shutdown(why: string) {
   if (reaper) clearInterval(reaper);
   const open = own();
   process.stderr.write(`[cf-browser] ${why}: closing ${open.length} browser(s)\n`);
-  await Promise.race([Promise.all(open.map(r => closeSession(r, { save: true, reason: 'Claude Code exited' }).catch(() => {}))), sleep(4000)]);
+  await Promise.race([Promise.all(open.map(r => closeSession(r, { save: true, reason: 'the agent session ended' }).catch(() => {}))), sleep(4000)]);
   const left = open.filter(r => r.state !== 'closed');
   await Promise.race([Promise.all(left.map(r => rest('DELETE', `/devtools/browser/${r.id}`, { allow404: true, timeoutMs: 3000 }).then(() => {
     r.state = 'closed'; r.closedAt = Date.now();
@@ -375,7 +377,9 @@ export async function shutdown(why: string) {
 export let sweepReport: { closed: number; files: number } = { closed: 0, files: 0 };
 export async function sweepOrphans() {
   let files: string[] = [];
-  try { files = readdirSync(stateDir()).filter(f => f.endsWith('.json')); } catch { return; }
+  const pidDead = (pid: number) => { try { process.kill(pid, 0); return false; } catch (e: any) { return e?.code !== 'EPERM'; } };
+  // State files, plus ones a sweeper claimed and then died holding (<file>.sweep-<pid>).
+  try { files = readdirSync(stateDir()).filter(f => f.endsWith('.json') || (/\.json\.sweep-(\d+)$/.test(f) && pidDead(Number(/(\d+)$/.exec(f)![1])))); } catch { return; }
   for (const f of files) {
     if (f === `${process.pid}-${SERVER_NONCE}.json`) continue;
     let s: any;
@@ -383,6 +387,10 @@ export async function sweepOrphans() {
     let alive = false;
     try { process.kill(s.serverPid, 0); alive = true; } catch (e: any) { alive = e?.code === 'EPERM'; }
     if (alive && Date.now() - Date.parse(s.updatedAt) < profiles.STALE_MS) continue;
+    // Claim it first: the watchdog and a new server's startup sweep can reach the same file; only the rename winner
+    // closes its browsers and records their time.
+    const claimed = join(stateDir(), `${f.replace(/\.sweep-\d+$/, '')}.sweep-${process.pid}`);
+    try { renameSync(join(stateDir(), f), claimed); } catch { continue; }
     for (const x of s.sessions || []) {
       let end = Math.min(Date.now(), (x.lastActivityAt || x.createdAt) + (x.keepAliveS || 1200) * 1000);
       try {
@@ -392,7 +400,7 @@ export async function sweepOrphans() {
       usage.recordSessionEnd(x.id, x.createdAt, Math.max(end, x.createdAt));
       if (x.profile && x.mode === 'write') profiles.releaseLock(x.profile, s.nonce);
     }
-    try { unlinkSync(join(stateDir(), f)); sweepReport.files++; } catch { /* gone */ }
+    try { unlinkSync(claimed); sweepReport.files++; } catch { /* gone */ }
   }
   if (sweepReport.files) process.stderr.write(`[cf-browser] sweep: ${sweepReport.files} stale state file(s), ${sweepReport.closed} browser(s) still running were closed\n`);
 }

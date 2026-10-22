@@ -1,0 +1,20 @@
+{
+  "name": "plugin-cf-browser",
+  "interface": {
+    "displayName": "cf-browser (Cloudflare Browser Run)"
+  },
+  "plugins": [
+    {
+      "name": "cf-browser",
+      "source": {
+        "source": "local",
+        "path": "./plugins/cf-browser"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

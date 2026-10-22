@@ -64,5 +64,23 @@ const hidden = ["browser_close", "browser_run_code_unsafe", "browser_drop", "bro
 if (hidden.length) { console.error("page-tools.json exposes hidden tools: " + hidden.join(", ")); process.exit(1); }
 ' "$P/server/dist/page-tools.json" || bad "page-tools.json check failed"
 
+# 9 Codex: manifest, marketplace, MCP file and hooks file
+node -e '
+const fs = require("fs"), path = require("path"); const P = process.argv[1]; const errs = [];
+const read = f => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) { errs.push(`${f}: ${e.message}`); return {}; } };
+const c = read(`${P}/.codex-plugin/plugin.json`), cl = read(`${P}/.claude-plugin/plugin.json`), m = read(".agents/plugins/marketplace.json");
+for (const k of ["name", "version", "description", "interface", "skills", "mcpServers", "hooks"]) if (!c[k]) errs.push(`codex plugin.json lacks ${k}`);
+if (c.version !== cl.version) errs.push(`codex version ${c.version} != claude version ${cl.version}`);
+for (const k of ["skills", "mcpServers", "hooks"]) if (c[k] && (!String(c[k]).startsWith("./") || !fs.existsSync(path.join(P, c[k])))) errs.push(`codex ${k} path missing or not ./: ${c[k]}`);
+const e = (m.plugins || []).find(x => x.name === "cf-browser");
+if (!e) errs.push("codex marketplace has no cf-browser entry");
+else { if (!e.category || !e.policy?.installation || !e.policy?.authentication) errs.push("codex marketplace entry lacks category/policy"); if (path.normalize(e.source?.path || "") !== path.normalize(P)) errs.push(`codex marketplace path ${e.source?.path} != ${P}`); }
+const mcp = read(path.join(P, c.mcpServers || ".codex-mcp.json")).mcpServers || {};
+if (!mcp.cf_browser) errs.push("codex MCP file has no cf_browser server");
+const hooks = JSON.stringify(read(path.join(P, c.hooks || "hooks/codex-hooks.json")));
+for (const h of hooks.match(/\/hooks\/[a-z-]+\.mjs/g) || []) if (!fs.existsSync(path.join(P, h))) errs.push(`codex hook script missing: ${h}`);
+if (errs.length) { console.error(errs.join("\n")); process.exit(1); }
+' "$P" || bad "Codex packaging check failed"
+
 [ $fail = 0 ] && echo "validate: OK"
 exit $fail

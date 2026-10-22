@@ -15,7 +15,7 @@ The argument is the text after the skill name (or the line starting `ARGUMENTS:`
 - A profile is a saved browser state: cookies, localStorage and IndexedDB. It lives on this computer in `~/.cf-browser/profiles/<name>/` (or the folder set in the plugin's `profiles_dir` option), outside the plugin's own data folder, so uninstalling the plugin keeps it. Deleting that folder forgets every login.
 - **Everyday profile** (`main` by default): every new browser loads it and saves logins back on close, after a handoff, and every 5 minutes of activity. One browser at a time writes it.
 - **Clone** (parallel work): when `main` is already open in another browser (`PROFILE_IN_USE`), `profile_clone main → main-2` copies its last saved logins; the clone then keeps its own cookies. A site that allows one active session per login may sign one of them out: log in again inside the clone.
-- **Separate profile** (another account, another person, or a site that logs out parallel sessions): `profile_create work`, then `/cf-browser:login <site>` choosing that profile. A fresh login gives an independent site session; a clone shares the original's.
+- **Separate profile** (another account, another person, or a site that logs out parallel sessions): `profile_create work`, then the cf-browser login skill choosing that profile. A fresh login gives an independent site session; a clone shares the original's.
 - **Read-only** (`profile_mode: "read"`): loads the logins, never saves.
 - **Backup**: the first save of each browser keeps the previous state as a backup; `profile_restore_previous` swaps it back when a save captured a signed-out state.
 - Profile files are as sensitive as passwords. Tools return metadata only (sites, cookie count, expiry); the plugin's guard blocks the agent from reading the files. Never sync or share the folder; to share access, the other person logs in themselves.
@@ -25,9 +25,9 @@ The argument is the text after the skill name (or the line starting `ARGUMENTS:`
 |---|---|
 | `list` | `profile_list`; show name, default, sites, cookie count, earliest expiry, last saved, backup, in use by |
 | `clone <from> <to>` | `profile_clone`. If the source is open, say the copy is its last saved state (run `profile_save` on that browser first to include newer logins) |
-| `separate <name>` | `profile_create <name>`, then offer `/cf-browser:login <site>` into it |
+| `separate <name>` | `profile_create <name>`, then offer the cf-browser login skill into it |
 | `restore <name>` | `profile_restore_previous`. Refused while the profile is open: close that browser with `save_profile: false` first |
-| `delete <name>` | Ask with AskUserQuestion first ("Delete profile <name> and its saved logins for <sites>? This cannot be undone."). Only on yes: `profile_delete` with `confirm: true` |
-| `default <name>` | The default profile is a plugin option: tell the user to set `default_profile` in `/plugin` → cf-browser → configure |
+| `delete <name>` | Ask the user first ("Delete profile <name> and its saved logins for <sites>? This cannot be undone."). Only on yes: `profile_delete` with `confirm: true` |
+| `default <name>` | The default profile is a plugin option: tell the user to set `default_profile` in `/plugin` → cf-browser → configure (Claude Code) or `CFB_DEFAULT_PROFILE=<name>` in `~/.cf-browser/.env` (Codex) |
 
 Never read, copy or print files inside the profiles folder; use the tools.
