@@ -17544,7 +17544,7 @@ function cookiesFor(name, url) {
 }
 
 // src/sessions.ts
-import { mkdirSync as mkdirSync3, readdirSync as readdirSync3, readFileSync as readFileSync4, unlinkSync as unlinkSync2 } from "node:fs";
+import { mkdirSync as mkdirSync3, readdirSync as readdirSync3, readFileSync as readFileSync4, renameSync as renameSync2, unlinkSync as unlinkSync2 } from "node:fs";
 import { join as join5 } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes as randomBytes2 } from "node:crypto";
@@ -18686,8 +18686,16 @@ async function shutdown(why) {
 var sweepReport = { closed: 0, files: 0 };
 async function sweepOrphans() {
   let files = [];
+  const pidDead = (pid) => {
+    try {
+      process.kill(pid, 0);
+      return false;
+    } catch (e) {
+      return e?.code !== "EPERM";
+    }
+  };
   try {
-    files = readdirSync3(stateDir()).filter((f) => f.endsWith(".json"));
+    files = readdirSync3(stateDir()).filter((f) => f.endsWith(".json") || /\.json\.sweep-(\d+)$/.test(f) && pidDead(Number(/(\d+)$/.exec(f)[1])));
   } catch {
     return;
   }
@@ -18707,6 +18715,12 @@ async function sweepOrphans() {
       alive = e?.code === "EPERM";
     }
     if (alive && Date.now() - Date.parse(s.updatedAt) < STALE_MS) continue;
+    const claimed = join5(stateDir(), `${f.replace(/\.sweep-\d+$/, "")}.sweep-${process.pid}`);
+    try {
+      renameSync2(join5(stateDir(), f), claimed);
+    } catch {
+      continue;
+    }
     for (const x of s.sessions || []) {
       let end = Math.min(Date.now(), (x.lastActivityAt || x.createdAt) + (x.keepAliveS || 1200) * 1e3);
       try {
@@ -18721,7 +18735,7 @@ async function sweepOrphans() {
       if (x.profile && x.mode === "write") releaseLock(x.profile, s.nonce);
     }
     try {
-      unlinkSync2(join5(stateDir(), f));
+      unlinkSync2(claimed);
       sweepReport.files++;
     } catch {
     }

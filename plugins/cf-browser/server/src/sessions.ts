@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
@@ -377,7 +377,9 @@ export async function shutdown(why: string) {
 export let sweepReport: { closed: number; files: number } = { closed: 0, files: 0 };
 export async function sweepOrphans() {
   let files: string[] = [];
-  try { files = readdirSync(stateDir()).filter(f => f.endsWith('.json')); } catch { return; }
+  const pidDead = (pid: number) => { try { process.kill(pid, 0); return false; } catch (e: any) { return e?.code !== 'EPERM'; } };
+  // State files, plus ones a sweeper claimed and then died holding (<file>.sweep-<pid>).
+  try { files = readdirSync(stateDir()).filter(f => f.endsWith('.json') || (/\.json\.sweep-(\d+)$/.test(f) && pidDead(Number(/(\d+)$/.exec(f)![1])))); } catch { return; }
   for (const f of files) {
     if (f === `${process.pid}-${SERVER_NONCE}.json`) continue;
     let s: any;
@@ -385,6 +387,10 @@ export async function sweepOrphans() {
     let alive = false;
     try { process.kill(s.serverPid, 0); alive = true; } catch (e: any) { alive = e?.code === 'EPERM'; }
     if (alive && Date.now() - Date.parse(s.updatedAt) < profiles.STALE_MS) continue;
+    // Claim it first: the watchdog and a new server's startup sweep can reach the same file; only the rename winner
+    // closes its browsers and records their time.
+    const claimed = join(stateDir(), `${f.replace(/\.sweep-\d+$/, '')}.sweep-${process.pid}`);
+    try { renameSync(join(stateDir(), f), claimed); } catch { continue; }
     for (const x of s.sessions || []) {
       let end = Math.min(Date.now(), (x.lastActivityAt || x.createdAt) + (x.keepAliveS || 1200) * 1000);
       try {
@@ -394,7 +400,7 @@ export async function sweepOrphans() {
       usage.recordSessionEnd(x.id, x.createdAt, Math.max(end, x.createdAt));
       if (x.profile && x.mode === 'write') profiles.releaseLock(x.profile, s.nonce);
     }
-    try { unlinkSync(join(stateDir(), f)); sweepReport.files++; } catch { /* gone */ }
+    try { unlinkSync(claimed); sweepReport.files++; } catch { /* gone */ }
   }
   if (sweepReport.files) process.stderr.write(`[cf-browser] sweep: ${sweepReport.files} stale state file(s), ${sweepReport.closed} browser(s) still running were closed\n`);
 }
