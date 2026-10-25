@@ -1,5 +1,9 @@
 # changelog
 
+## 1.1.1 - 2026-10-25
+
+- fix: read the server version from the plugin manifest (#3) (ba59ec1)
+
 ## cf-browser 1.1.0 (2026-10-22)
 
 - Codex plugin from the same repo: `.agents/plugins/marketplace.json`, `.codex-plugin/plugin.json`, MCP server `cf_browser` (`.codex-mcp.json`) and Codex hooks (`hooks/codex-hooks.json`).
