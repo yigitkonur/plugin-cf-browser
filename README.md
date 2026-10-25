@@ -65,7 +65,7 @@ claude code does not update third-party marketplaces in the background until you
 claude plugin marketplace update plugin-cf-browser && claude plugin update cf-browser@plugin-cf-browser
 ```
 
-no github ssh key on the machine? set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` in its environment, or background and in-session updates fail (the install command falls back to https by itself, updates don't). codex: `codex plugin marketplace upgrade plugin-cf-browser`, then start a new session.
+no github ssh key on the machine? set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` in its environment, or background and in-session updates fail (the install command falls back to https by itself, updates don't). codex: `codex plugin marketplace upgrade plugin-cf-browser` alone moves the installed plugin to the newest version (checked 1.1.0 → 1.1.1); start a new session to load it.
 
 ### use it in codex
 
