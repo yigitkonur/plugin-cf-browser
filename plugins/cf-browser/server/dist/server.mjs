@@ -19273,7 +19273,16 @@ async function callPageTool(name, args) {
 }
 
 // src/index.ts
-var VERSION = "1.1.0";
+function readVersion() {
+  for (const f of ["../../.claude-plugin/plugin.json", "../../.codex-plugin/plugin.json"]) {
+    try {
+      return JSON.parse(readFileSync5(new URL(f, import.meta.url), "utf8")).version;
+    } catch {
+    }
+  }
+  return "0.0.0";
+}
+var VERSION = readVersion();
 var MAX_TEXT = 2e4;
 var pageTools = JSON.parse(readFileSync5(new URL("./page-tools.json", import.meta.url), "utf8"));
 var pageToolNames = new Set(pageTools.map((t) => t.name));

@@ -11,7 +11,13 @@ import { setDeps, DepsState } from './deps.js';
 import { tools, callPageTool } from './tools.js';
 import * as S from './sessions.js';
 
-export const VERSION = '1.1.0';
+function readVersion(): string {
+  for (const f of ['../../.claude-plugin/plugin.json', '../../.codex-plugin/plugin.json']) {
+    try { return JSON.parse(readFileSync(new URL(f, import.meta.url), 'utf8')).version; } catch { /* try the next manifest */ }
+  }
+  return '0.0.0';
+}
+export const VERSION = readVersion();
 const MAX_TEXT = 20000;
 
 const pageTools: any[] = JSON.parse(readFileSync(new URL('./page-tools.json', import.meta.url), 'utf8'));

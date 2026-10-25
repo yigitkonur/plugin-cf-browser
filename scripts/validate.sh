@@ -46,7 +46,7 @@ done
 V="$(node -p 'require("./'$P'/.claude-plugin/plugin.json").version')"
 MV="$(node -p 'require("./.claude-plugin/marketplace.json").plugins.find(p => p.name === "cf-browser").version')"
 [ "$MV" = "$V" ] || bad "marketplace version $MV != plugin.json $V"
-grep -q "export const VERSION = '$V'" "$P/server/src/index.ts" || bad "server/src/index.ts VERSION != $V"
+grep -q "readVersion()" "$P/server/src/index.ts" || bad "server/src/index.ts must read its version from the plugin manifest (scripts/release.py bumps manifests only)"
 
 # 6
 [ -f "$P/THIRD_PARTY_NOTICES.md" ] || bad "missing $P/THIRD_PARTY_NOTICES.md"
