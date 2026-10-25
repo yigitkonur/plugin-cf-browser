@@ -55,6 +55,18 @@ claude plugin marketplace update plugin-cf-browser && claude plugin update cf-br
 claude plugin uninstall cf-browser@plugin-cf-browser
 ```
 
+### updates
+
+every push to `main` that changes the plugin is released automatically: after ci passes, [`scripts/release.py`](scripts/release.py) reads the commit subjects since the last release (`feat:` minor, `fix:` / `perf:` patch, `!` or `BREAKING CHANGE` major; docs, ci, chore, test and refactor don't release), writes the new version into the manifests and the changelog, tags it and publishes the github release. claude code only fetches a plugin when its version string changes, which is why this runs on every shipped change.
+
+claude code does not update third-party marketplaces in the background until you switch it on, once per machine: `/plugin` → **Marketplaces** → plugin-cf-browser → **Enable auto-update**. without it, pull updates by hand:
+
+```sh
+claude plugin marketplace update plugin-cf-browser && claude plugin update cf-browser@plugin-cf-browser
+```
+
+no github ssh key on the machine? set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` in its environment, or background and in-session updates fail (the install command falls back to https by itself, updates don't). codex: `codex plugin marketplace upgrade plugin-cf-browser`, then start a new session.
+
 ### use it in codex
 
 the same repo is a codex plugin marketplace too (codex 0.163+):
