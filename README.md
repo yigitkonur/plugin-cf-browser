@@ -27,13 +27,24 @@ printf '{"account_id":"%s","api_token":"%s"}' "$CF_ACCOUNT_ID" "$CF_API_TOKEN" \
 
 or skip that and put `CF_ACCOUNT_ID` and `CF_API_TOKEN` in `~/.cf-browser/.env` (the file codex uses, see below); `/plugin` values win when both are set.
 
-restart claude code. run `/cf-browser:setup` once: it checks everything and asks how you want logins kept.
+restart claude code: plugins load when a chat starts, so a chat opened before the install won't have the tools (see "without the plugin (curl)" below for those). run `/cf-browser:setup` once: it checks everything and asks how you want logins kept.
+
+no github ssh key on the machine (the `owner/repo` form clones over ssh)? use the https url instead: `claude plugin install cf-browser --marketplace https://github.com/yigitkonur/plugin-cf-browser.git`.
 
 prefer the classic two-step?
 
 ```sh
 claude plugin marketplace add yigitkonur/plugin-cf-browser
 claude plugin install cf-browser@plugin-cf-browser
+```
+
+install it for one project only, and keep it off until you want it (writes `.claude/settings.json` in the project, not your global config):
+
+```sh
+cd your-project
+claude plugin install cf-browser --marketplace yigitkonur/plugin-cf-browser -s project
+claude plugin disable cf-browser@plugin-cf-browser -s project     # installed, not active
+claude plugin enable  cf-browser@plugin-cf-browser -s project     # when you want it, then restart claude
 ```
 
 check, update, remove:
@@ -94,7 +105,7 @@ just ask claude to do something on the web; the primer tells it to load `cf-brow
 
 | option | default | what it does |
 |---|---|---|
-| `account_id`, `api_token` | — | required. the token goes to your os keychain |
+| `account_id`, `api_token` | — | needed from one of two places: here (the token goes to your os keychain) or `CF_ACCOUNT_ID` / `CF_API_TOKEN` in the `.env` file from the install section. these values win when both are set |
 | `plan` | `paid` | `free` caps idle at 300 s, 3 browsers, 9 min/day |
 | `default_profile` | `main` | the everyday profile |
 | `profiles_dir` | `~/.cf-browser` | where logins live (outside the plugin data folder on purpose) |
@@ -105,6 +116,33 @@ just ask claude to do something on the web; the primer tells it to load `cf-brow
 | `open_live_view_locally` | true | open live view / handoff in your default browser instead of printing the url |
 
 `CF_BROWSER_HOOKS=off` in your environment silences the plugin's hooks.
+
+### without the plugin (curl)
+
+an agent that doesn't have the tools loaded (a chat started before the install, a harness without plugins) can do the same work with the rest calls the mcp server makes. the credentials are the `.env` file from the install section (`CF_ACCOUNT_ID`, `CF_API_TOKEN`; `CFB_HOME` moves the folder). load them in the shell and never print the token or put it in a file or command line others can read:
+
+```sh
+set -a; . "${CFB_HOME:-$HOME/.cf-browser}/.env"; set +a
+B="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/browser-run"   # older accounts: /browser-rendering
+H="Authorization: Bearer $CF_API_TOKEN"; J='content-type: application/json'
+
+# read a public page as markdown (kitesurf, free in beta); also /content (html), /links
+curl -sS -m 60 -X POST "$B/markdown?browser=kitesurf" -H "$H" -H "$J" -d '{"url":"https://example.com"}'     # {"success":true,"result":"..."}
+
+# screenshot / pdf (chromium, billed by browser time; the x-browser-ms-used header says how much)
+curl -sS -m 90 -o shot.png -X POST "$B/screenshot" -H "$H" -H "$J" -d '{"url":"https://example.com"}'
+
+# crawl: start, then poll with the id in "result" until "status" is "completed"
+curl -sS -X POST "$B/crawl" -H "$H" -H "$J" -d '{"url":"https://example.com","limit":10,"render":false,"formats":["markdown"]}'
+curl -sS "$B/crawl/<job-id>?limit=10" -H "$H"        # records[] hold the pages
+
+# a real browser: create, drive it over the websocket in webSocketDebuggerUrl with playwright/cdp, then ALWAYS delete it
+curl -sS -X POST "$B/devtools/browser?keep_alive=120000" -H "$H"    # {"sessionId":"...","webSocketDebuggerUrl":"wss://..."}
+curl -sS "$B/devtools/session?limit=20" -H "$H"                     # what is open on the account
+curl -sS -X DELETE "$B/devtools/browser/<sessionId>" -H "$H"        # {"status":"closed"}
+```
+
+an open browser bills until it's deleted or `keep_alive` (milliseconds) runs out, so delete it when done. logins still go through you: don't type passwords into pages for the agent. api quirks: [CF-FINDINGS.md](CF-FINDINGS.md).
 
 ## the questions everyone asks
 
