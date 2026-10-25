@@ -136,15 +136,27 @@ def write_plugin_versions(root, name, old, new):
             done.append("%s (%d)" % (rel, n))
     path = os.path.join(root, market)
     text = open(path, encoding="utf-8").read()
-    at = text.find('"name": "%s"' % name)
-    if at < 0:
-        at = re.search(r'"name"\s*:\s*"%s"' % re.escape(name), text).start()
-    end = text.find('"source"', at)
+    at, end = entry_span(text, name)
     seg, n = re.subn(r'("version"\s*:\s*")%s(")' % re.escape(old), lambda m: m.group(1) + new + m.group(2), text[at:end])
     if n:
         open(path, "w", encoding="utf-8").write(text[:at] + seg + text[end:])
         done.append("%s (%d)" % (market, n))
     return done
+
+
+def entry_span(text, name):
+    """(start, end) of the marketplace entry called `name`, found structurally so the order of its keys does not matter."""
+    dec = json.JSONDecoder()
+    i = text.index("[", re.search(r'"plugins"\s*:', text).end()) + 1
+    while True:
+        while text[i] in " \t\r\n,":
+            i += 1
+        if text[i] == "]":
+            raise SystemExit("release.py: no marketplace entry called %s" % name)
+        obj, end = dec.raw_decode(text, i)
+        if obj.get("name") == name:
+            return i, end
+        i = end
 
 
 def last_release_tag(root, name=None):
@@ -216,9 +228,7 @@ def decide(commits, major):
         m = CONV.match(c["subject"])
         lv = "none"
         trailer = re.search(r"^Release-Level:[ \t]*(minor|major)[ \t]*$", c["body"], re.I | re.M)
-        if trailer:                              # an explicit trailer raises the level (major stays minor while the major is 0)
-            lv = "minor" if (trailer.group(1).lower() == "minor" or major == 0) else "major"
-        elif m:
+        if m:
             t = m.group("type").lower()
             if m.group("bang") or "BREAKING CHANGE" in c["body"]:
                 lv = "minor" if major == 0 else "major"
@@ -228,6 +238,10 @@ def decide(commits, major):
                 lv = "patch"
         else:
             lv = "patch"
+        if trailer:                              # an explicit trailer only raises the level (major stays minor while the major is 0)
+            tl = "minor" if (trailer.group(1).lower() == "minor" or major == 0) else "major"
+            if RANK[tl] > RANK[lv]:
+                lv = tl
         if lv != "none":
             why.append("%s: %s" % (lv, c["subject"]))
         if RANK[lv] > RANK[level]:
