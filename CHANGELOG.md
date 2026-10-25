@@ -1,5 +1,9 @@
 # changelog
 
+## 1.1.2 - 2026-10-25
+
+- fix: install off by default; shared plugin-kit CI, release and install docs (a91b01b)
+
 ## 1.1.1 - 2026-10-25
 
 - fix: read the server version from the plugin manifest (#3) (ba59ec1)
