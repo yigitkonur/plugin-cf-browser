@@ -12,71 +12,90 @@ what you get:
 
 every behavior in here was run live against a real cloudflare account (receipts: [verified-facts.md](verified-facts.md)).
 
+<!-- kit:install:start -->
 ## install
 
+Every plugin of ours is installed **once, globally, and off**, then **turned on per project**. Nothing runs and no tokens are spent in chats that don't switch it on. It works the same in Claude Code and Codex.
+
+### 1. install it globally
+
+**Claude Code**
+
 ```sh
-claude plugin install cf-browser --marketplace yigitkonur/plugin-cf-browser
+claude plugin marketplace add yigitkonur/plugin-cf-browser
+claude plugin install cf-browser@plugin-cf-browser -s user          # stays off: defaultEnabled is false in the manifest
 ```
 
-then give it your cloudflare account id and an api token (it asks on install, or run `/plugin` → cf-browser → configure). from a terminal, without the token ever touching chat:
+**Codex** (0.163+)
+
+```sh
+codex plugin marketplace add yigitkonur/plugin-cf-browser
+codex plugin add cf-browser@plugin-cf-browser
+codex-plugin-project.sh global-off cf-browser@plugin-cf-browser     # Codex has no enable/disable command; this keeps it off everywhere
+```
+
+All our plugins, both hosts, plus the `plugin` command and the 6-hourly update job, in one line:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/yigitkonur/plugin-kit/main/install.sh | sh -s -- --all
+```
+
+### 2. turn it on in a project
+
+```sh
+cd your-project
+plugin on cf-browser    # Claude Code and Codex, this folder only
+plugin off cf-browser   # undo
+plugin                  # or pick from a list (TUI)
+```
+
+By hand, without the `plugin` command:
+
+```sh
+claude plugin enable cf-browser@plugin-cf-browser --scope project      # undo: claude plugin disable cf-browser@plugin-cf-browser --scope project
+codex-plugin-project.sh on cf-browser@plugin-cf-browser . --trust      # undo: codex-plugin-project.sh off cf-browser@plugin-cf-browser
+```
+
+Restart `claude` / `codex` in that folder afterwards.
+Codex reads a folder's `.codex/config.toml` only when the folder is trusted; `--trust` adds that, and it also enables the folder's hooks and rules, so use it for your own projects only. `plugin` and `codex-plugin-project.sh` come from [plugin-kit](https://github.com/yigitkonur/plugin-kit) (the one-line installer above).
+
+### 3. updates
+
+A plugin updates only when its `version` changes, and this repo's `release` workflow bumps it on every shipped change. Machines pick it up with `plugin update`, or by themselves with the 6-hourly job (`plugin autoupdate install`). By hand:
+
+```sh
+claude plugin marketplace update plugin-cf-browser && claude plugin update cf-browser@plugin-cf-browser
+codex plugin marketplace upgrade plugin-cf-browser        # then start a new session
+```
+
+No GitHub SSH key on the machine? `export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` (`plugin install` sets it in Claude's settings for you).
+
+### 4. uninstall
+
+```sh
+claude plugin uninstall cf-browser@plugin-cf-browser -s user
+claude plugin marketplace remove plugin-cf-browser
+codex plugin remove cf-browser@plugin-cf-browser
+codex plugin marketplace remove plugin-cf-browser
+```
+<!-- kit:install:end -->
+
+### set up the credentials
+
+the plugin needs your cloudflare account id and an api token (see "what you need" below). claude code asks for them on install, or run `/plugin` → cf-browser → configure. from a terminal, without the token ever touching chat:
 
 ```sh
 printf '{"account_id":"%s","api_token":"%s"}' "$CF_ACCOUNT_ID" "$CF_API_TOKEN" \
   | claude plugin configure cf-browser@plugin-cf-browser --values-stdin
 ```
 
-or skip that and put `CF_ACCOUNT_ID` and `CF_API_TOKEN` in `~/.cf-browser/.env` (the file codex uses, see below); `/plugin` values win when both are set.
+or skip that and put `CF_ACCOUNT_ID` and `CF_API_TOKEN` in the `.env` file described under "use it in codex" below; `/plugin` values win when both are set.
 
-restart claude code: plugins load when a chat starts, so a chat opened before the install won't have the tools (see "without the plugin (curl)" below for those). run `/cf-browser:setup` once: it checks everything and asks how you want logins kept.
-
-no github ssh key on the machine (the `owner/repo` form clones over ssh)? use the https url instead: `claude plugin install cf-browser --marketplace https://github.com/yigitkonur/plugin-cf-browser.git`.
-
-prefer the classic two-step?
-
-```sh
-claude plugin marketplace add yigitkonur/plugin-cf-browser
-claude plugin install cf-browser@plugin-cf-browser
-```
-
-install it for one project only, and keep it off until you want it (writes `.claude/settings.json` in the project, not your global config):
-
-```sh
-cd your-project
-claude plugin install cf-browser --marketplace yigitkonur/plugin-cf-browser -s project
-claude plugin disable cf-browser@plugin-cf-browser -s project     # installed, not active
-claude plugin enable  cf-browser@plugin-cf-browser -s project     # when you want it, then restart claude
-```
-
-check, update, remove:
-
-```sh
-claude plugin details cf-browser
-claude plugin marketplace update plugin-cf-browser && claude plugin update cf-browser@plugin-cf-browser
-claude plugin uninstall cf-browser@plugin-cf-browser
-```
-
-### updates
-
-every push to `main` that changes the plugin is released automatically: after ci passes, [`scripts/release.py`](scripts/release.py) reads the commit subjects since the last release (`feat:` minor, `fix:` / `perf:` patch, `!` or `BREAKING CHANGE` major; docs, ci, chore, test and refactor don't release), writes the new version into the manifests and the changelog, tags it and publishes the github release. claude code only fetches a plugin when its version string changes, which is why this runs on every shipped change.
-
-claude code does not update third-party marketplaces in the background until you switch it on, once per machine: `/plugin` → **Marketplaces** → plugin-cf-browser → **Enable auto-update**. without it, pull updates by hand:
-
-```sh
-claude plugin marketplace update plugin-cf-browser && claude plugin update cf-browser@plugin-cf-browser
-```
-
-no github ssh key on the machine? set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` in its environment, or background and in-session updates fail (the install command falls back to https by itself, updates don't). codex: `codex plugin marketplace upgrade plugin-cf-browser` alone moves the installed plugin to the newest version (checked 1.1.0 → 1.1.1); start a new session to load it.
+plugins load when a chat starts, so a chat opened before the install won't have the tools (see "without the plugin (curl)" below for those). after you switch the plugin on in a project, run `/cf-browser:setup` once: it checks everything and asks how you want logins kept.
 
 ### use it in codex
 
-the same repo is a codex plugin marketplace too (codex 0.163+):
-
-```sh
-codex plugin marketplace add yigitkonur/plugin-cf-browser
-codex plugin add cf-browser@plugin-cf-browser
-```
-
-codex has no plugin settings, so the credentials go in `~/.cf-browser/.env` (the claude code install reads it too when `/plugin` leaves them unset):
+codex 0.163+ runs the same plugin from the same repo (install block above). codex has no plugin settings, so the credentials go in a `.env` file the server reads (the claude code install reads it too when `/plugin` leaves them unset):
 
 ```sh
 mkdir -p ~/.cf-browser && umask 077 && printf 'CF_ACCOUNT_ID=%s\nCF_API_TOKEN=%s\n' "$CF_ACCOUNT_ID" "$CF_API_TOKEN" > ~/.cf-browser/.env
