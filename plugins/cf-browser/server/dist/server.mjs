@@ -17842,6 +17842,7 @@ async function observe(r, t, a = {}) {
   t.needsObservation = false;
   const lines = snapshot.split("\n");
   const matching = a.query ? lines.filter((l) => l.toLowerCase().includes(String(a.query).toLowerCase())).join("\n") : snapshot;
+  observation3.snapshot = matching;
   return {
     tab_id: t.id,
     observation_id: observation3.id,

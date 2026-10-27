@@ -191,3 +191,12 @@ test('long identity handoff preserves paused tasks and gives fresh idle grace af
   assert.equal(m.tasks.get(a.task_id)?.state, 'active'); assert.equal(m.tasks.get(b.task_id)?.state, 'active');
   await m.detach('a'); await m.detach('b');
 });
+test('filtered snapshot continuation preserves the same filtered result', async () => {
+  const { m, profile } = fixture(); const a = await m.start('a', { profile });
+  const raw = ['irrelevant '.repeat(1400), 'needle '+ 'a'.repeat(13000), 'different result', 'needle final'].join('\n');
+  m.findTab(a.tab.tab_id).t.page.ariaSnapshot = async () => raw;
+  const first = await result(m, await m.observe('a', { tab_id: a.tab.tab_id, query: 'needle' }));
+  const second = await result(m, await m.observe('a', { tab_id: a.tab.tab_id, observation_id: first.observation_id, offset: first.snapshot.next_offset }));
+  assert.equal(first.snapshot.text + second.snapshot.text, raw.split('\n').filter(line => line.includes('needle')).join('\n'));
+  await m.finish('a', a.task_id);
+});

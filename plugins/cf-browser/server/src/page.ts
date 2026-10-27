@@ -26,6 +26,7 @@ export async function observe(r: BrowserRecord, t: Tab, a: any = {}) {
   t.title = observation.title; t.observation = observation; t.needsObservation = false;
   const lines: string[] = snapshot.split('\n');
   const matching = a.query ? lines.filter(l => l.toLowerCase().includes(String(a.query).toLowerCase())).join('\n') : snapshot;
+  observation.snapshot = matching;
   return { tab_id: t.id, observation_id: observation.id, url: observation.url, title: observation.title, control: t.control,
     snapshot: windowSlice(matching), ...(a.query ? { query: a.query, matches: matching ? matching.split('\n').length : 0 } : {}), events: t.events.splice(0) };
 }
