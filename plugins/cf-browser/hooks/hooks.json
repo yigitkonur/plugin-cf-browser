@@ -1,18 +1,49 @@
 {
-  "description": "cf-browser: primer, stop notice (non-blocking), guard for saved logins and the API token",
+  "description": "cf-browser: shared-browser primer and non-blocking unfinished-task notice",
   "hooks": {
     "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/primer.mjs", "session"], "timeout": 10 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/primer.mjs",
+              "session"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
     ],
     "SubagentStart": [
-      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/primer.mjs", "subagent"], "timeout": 10 } ] }
-    ],
-    "PreToolUse": [
-      { "matcher": "^(Read|Grep|Glob|Bash|Edit|Write|MultiEdit|NotebookEdit)$",
-        "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs"], "timeout": 10 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/primer.mjs",
+              "subagent"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/stop-notice.mjs"], "timeout": 10 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/stop-notice.mjs"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

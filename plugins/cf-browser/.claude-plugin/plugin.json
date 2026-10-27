@@ -2,7 +2,7 @@
   "name": "cf-browser",
   "version": "1.1.2",
   "defaultEnabled": false,
-  "description": "Give Claude Code a real cloud browser on Cloudflare Browser Run: saved logins in an everyday profile, human handoff for logins and 2FA through Live View, a daily budget, and browsers that close themselves so nothing keeps billing.",
+  "description": "A shared Cloudflare Browser Run browser: persistent logins, independent agent tabs, interactive Live View and verified cleanup when work finishes.",
   "author": {
     "name": "yigitkonur",
     "url": "https://github.com/yigitkonur"
@@ -25,7 +25,7 @@
     "account_id": {
       "type": "string",
       "title": "Cloudflare account ID",
-      "description": "The 32-character account ID (dashboard: Account home → the ID next to the account name). Or leave empty and put CF_ACCOUNT_ID in ~/.cf-browser/.env.",
+      "description": "The 32-character account ID (dashboard: Account home \u2192 the ID next to the account name). Or leave empty and put CF_ACCOUNT_ID in ~/.cf-browser/.env.",
       "required": false
     },
     "api_token": {
@@ -33,13 +33,6 @@
       "title": "Cloudflare API token (Browser Run Edit)",
       "description": "An API token with the Browser Run Edit/Write permission for this account. Stored in the OS keychain. Or leave empty and put CF_API_TOKEN in ~/.cf-browser/.env.",
       "sensitive": true,
-      "required": false
-    },
-    "plan": {
-      "type": "string",
-      "title": "Workers plan (paid or free)",
-      "description": "paid (default) or free. On free the plugin caps idle timeout at 300 s, concurrency at 3 and the daily budget at 9 minutes, matching Cloudflare's free limits.",
-      "default": "paid",
       "required": false
     },
     "default_profile": {
@@ -59,43 +52,16 @@
     "idle_timeout_seconds": {
       "type": "number",
       "title": "Close idle browsers after (seconds)",
-      "description": "Idle time is billed, so idle browsers are closed. Cloudflare's own keep_alive is set 60 s longer as a backstop.",
+      "description": "Release forgotten idle agent tasks after this interval. Running operations and human control remain active.",
       "default": 300,
       "min": 60,
       "max": 1140,
       "required": false
     },
-    "max_session_minutes": {
-      "type": "number",
-      "title": "Maximum browser age (minutes)",
-      "description": "A browser is saved and closed at this age (not during a human handoff).",
-      "default": 30,
-      "min": 5,
-      "max": 240,
-      "required": false
-    },
-    "max_concurrent_sessions": {
-      "type": "number",
-      "title": "Maximum open browsers per window",
-      "description": "Cloudflare bills concurrency above 10 (monthly average of daily peaks).",
-      "default": 2,
-      "min": 1,
-      "max": 10,
-      "required": false
-    },
-    "daily_budget_minutes": {
-      "type": "number",
-      "title": "Daily browser-minute budget",
-      "description": "New browsers are refused (unless you confirm) once this machine used this many browser-minutes today (UTC).",
-      "default": 120,
-      "min": 5,
-      "max": 1440,
-      "required": false
-    },
     "open_live_view_locally": {
       "type": "boolean",
       "title": "Open Live View in your browser",
-      "description": "Open Live View and handoff pages in your default browser instead of printing their URL.",
+      "description": "Open the local shared-browser control panel in your default browser.",
       "default": true,
       "required": false
     }

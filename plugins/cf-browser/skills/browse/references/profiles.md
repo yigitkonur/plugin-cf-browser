@@ -1,31 +1,19 @@
-# Saved logins (profiles)
+# Profiles and identity
 
-## Model
-- A profile = a Playwright storage state (cookies, localStorage, IndexedDB) saved on this computer at `~/.cf-browser/profiles/<name>/state.json` (or the `profiles_dir` option), with one backup (`state.prev.json`) and metadata. It is outside the plugin's data folder: uninstalling keeps it; deleting the folder forgets every login.
-- Browser Run has no profiles of its own; every browser starts empty and cf-browser loads the profile into it.
+The configured everyday profile defaults to `main`. Every agent on the same machine/account uses its own tabs in the same live browser context. Login changes are therefore shared immediately. Parallel tasks need no profile selection, clone or read-only fallback.
 
-## Modes (`session_create profile_mode`)
-| Mode | Loads logins | Saves back | Use for |
-|---|---|---|---|
-| `write` (default) | yes | on close, after a handoff, every 5 min of activity, `profile_save` | normal work on the everyday profile |
-| `read` | yes | never | a second browser on a profile that is open elsewhere; subagents when the profile is locked |
-| `none` | no | never | public pages, throwaway work |
+Persistence covers cookies, localStorage and IndexedDB. It does not promise a complete Chrome disk profile, password/passkey store, service-worker cache, sessionStorage, unsaved form or open-tab RAM. A site may also expire or revoke its own session.
 
-## One writer per profile
-A write-mode browser holds the profile's lock. A second write open fails with `PROFILE_IN_USE` and three choices for the user:
-1. **Clone** — `profile_clone main → main-2`: same logins, own cookies from then on. Best for parallel work.
-2. **Read-only** — same logins, nothing saved.
-3. **Wait or close** the other browser.
-Locks of crashed runs go stale after 2 minutes and are taken over automatically.
+The manager checkpoints after human return, before task completion and periodically during use. Writes are atomic and preserve the previous valid checkpoint. An IndexedDB capture failure is reported; it does not silently overwrite the profile with a cookie-only snapshot. Corrupt state is distinct from a first-use empty profile.
 
-## Separate profiles
-For a second account on the same site, another person, or a site that signs out parallel sessions: `profile_create <name>` and log in inside it (the cf-browser login skill, choosing that profile). A fresh login is an independent session; a clone shares the original's session cookies.
+Use `advanced topic=profiles` only for an actual account-management need:
 
-## Bad saves
-If the site showed you signed out or broken, close with `save_profile: false`. If a bad state was saved already: `profile_restore_previous <name>` swaps in the backup (the first save of every browser keeps the previous state as backup).
+- Separate account environment requested: create a named profile, then start a task with that name and hand off login.
+- Save recent login state explicitly: `profile_save` with the task id.
+- Inspect state: `profile_list` returns metadata, not credentials.
+- Undo an unwanted/corrupt checkpoint: finish active tasks, then `profile_restore_previous`.
+- Remove an account environment: `profile_delete` for the user-requested inactive profile.
 
-## Quick Actions with a profile
-`page_read` / `page_scrape` / `page_extract` with `profile` send that profile's cookies for the URL's host and its parent domains. Logins stored in localStorage cannot be carried this way; use a browser session.
+A clone is a copy of the last saved checkpoint; it is not live synchronization. Existing saved profiles retain their names and location across this update.
 
-## Security limits
-Profile files are as sensitive as passwords. Tools return metadata only. The guard hook blocks Read/Grep/Glob/Bash/Edit/Write calls that mention the profiles folder — a speed bump, not a vault (a page script reading `document.cookie` or an indirect shell command can get around it). Never sync or share the folder; to share access, the other person logs in themselves.
+For login/logout/account switching, coordinate the shared identity. Human login uses `scope:identity`; an agent's authorized logout/switch action uses `affects_identity:true`. Other active operations settle first; dependent tasks then take fresh observations. The plugin cannot infer every application's private account-switch mechanism from page content.

@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 
 // A host value is unset when empty or when Claude Code left the ${user_config.x} placeholder in place.
 function hostVal(name: string): string | undefined {
@@ -41,12 +40,9 @@ export function expandHome(p: string): string {
   return p === '~' ? homedir() : p.startsWith('~/') ? join(homedir(), p.slice(2)) : p;
 }
 
-const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-
 const plan = val('CFB_PLAN')?.toLowerCase() === 'free' ? 'free' : 'paid';
-const free = plan === 'free';
 
-const idle = num('CFB_IDLE_TIMEOUT_S', 300, 60, free ? 300 : 1140);
+const idle = num('CFB_IDLE_TIMEOUT_S', 300, 60, 1140);
 
 export const cfg = {
   accountId: val('CF_ACCOUNT_ID'),
@@ -54,15 +50,9 @@ export const cfg = {
   plan,
   defaultProfile: (val('CFB_DEFAULT_PROFILE') || 'main').toLowerCase(),
   idleTimeoutS: idle,
-  maxSessionMin: num('CFB_MAX_SESSION_MIN', 30, 5, 240),
-  maxConcurrent: num('CFB_MAX_CONCURRENT', 2, 1, free ? 3 : 10),
-  dailyBudgetMin: num('CFB_DAILY_BUDGET_MIN', free ? 9 : 120, 5, free ? 9 : 1440),
   openLiveView: bool('CFB_OPEN_LIVE_VIEW', true),
   home: resolve(expandHome(val('CFB_HOME') || '~/.cf-browser')),
-  dataDir: resolve(expandHome(hostVal('PLUGIN_DATA') || hostVal('CLAUDE_PLUGIN_DATA') || '~/.cf-browser/data')),
-  // Codex starts plugin servers in the plugin folder, which is never the user's project: then the client's MCP roots
-  // decide (index.ts), and until they do uploads are limited to the temp folders.
-  projectDir: (hostVal('CLAUDE_PROJECT_DIR') || (resolve(process.cwd()) === PLUGIN_ROOT ? null : process.cwd())) as string | null,
+  dataDir: join(resolve(expandHome(val('CFB_HOME') || '~/.cf-browser')), 'data'),
   // Test hook: how often the reaper runs. Not a user option.
   reapMs: num('CFB_REAP_MS', 30000, 1000, 60000),
 };
@@ -74,3 +64,6 @@ export function configMissing(): string | null {
   const missing = [!cfg.accountId && 'account_id', !cfg.token && 'api_token'].filter(Boolean).join(' and ');
   return `cf-browser is not configured (${missing} missing). Put CF_ACCOUNT_ID and CF_API_TOKEN in ${envFilePath} (mode 600), or in Claude Code run: claude plugin configure cf-browser@plugin-cf-browser --values-stdin. Then restart the session. The cf-browser setup skill walks through it.`;
 }
+
+export const credentialSources = () => Object.fromEntries(['CF_ACCOUNT_ID', 'CF_API_TOKEN'].map(k => [k, hostVal(k) ? 'environment' : envFile[k] ? 'credentials file' : 'missing']));
+export const retiredSettings = ['CFB_MAX_SESSION_MIN', 'CFB_MAX_CONCURRENT', 'CFB_DAILY_BUDGET_MIN'].filter(k => val(k) !== undefined);

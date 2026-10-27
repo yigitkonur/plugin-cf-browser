@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // cf-browser launcher: Node built-ins only. Starts the MCP server at once and installs the browser
-// driver (playwright-core + @playwright/mcp) in the background on first start. Never writes to stdout.
+// driver (playwright-core) in the background on first start. Never writes to stdout.
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -13,14 +13,11 @@ const [maj, min] = process.versions.node.split('.').map(Number);
 if (maj < 20 || (maj === 20 && min < 19)) { log(`needs Node 20.19 or newer (found ${process.versions.node})`); process.exit(1); }
 
 const here = dirname(fileURLToPath(import.meta.url));
-if (process.argv[2] === '--watch') {
-  const { watch } = await import(pathToFileURL(join(here, 'dist', 'server.mjs')).href);
-  await watch(Number(process.argv[3]), process.argv[4]);
-}
 const lock = join(here, 'package-lock.json');
 const h = createHash('sha256').update(readFileSync(lock)).digest('hex').slice(0, 12);
-const dataEnv = [process.env.PLUGIN_DATA, process.env.CLAUDE_PLUGIN_DATA].find(v => v && !v.startsWith('${'));
-const dataDir = dataEnv && !dataEnv.startsWith('${') ? dataEnv : join(homedir(), '.cf-browser', 'data');
+const configuredHome = process.env.CFB_HOME && !process.env.CFB_HOME.startsWith('${') ? process.env.CFB_HOME : join(homedir(), '.cf-browser');
+const sharedHome = configuredHome === '~' ? homedir() : configuredHome.startsWith('~/') ? join(homedir(), configuredHome.slice(2)) : configuredHome;
+const dataDir = join(sharedHome, 'data');
 const depsRoot = join(dataDir, 'deps');
 const final = join(depsRoot, h);
 const ready = dir => existsSync(join(dir, 'node_modules', '.complete'));
@@ -46,7 +43,7 @@ async function install() {
     copyFileSync(join(here, 'package.json'), join(tmp, 'package.json'));
     copyFileSync(lock, join(tmp, 'package-lock.json'));
     const env = { ...process.env, PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1' };
-    delete env.CF_API_TOKEN;
+    delete env.CF_API_TOKEN; delete env.CF_ACCOUNT_ID;
     const [cmd, pre] = npmCommand();
     log(`installing browser driver into ${tmp}`);
     const err = await new Promise(resolve => {
@@ -86,5 +83,6 @@ function prune() {
 
 function alive(pid) { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } }
 
-const { main } = await import(pathToFileURL(join(here, 'dist', 'server.mjs')).href);
+const runtime = await import(pathToFileURL(join(here, 'dist', 'server.mjs')).href);
+const main = process.argv[2] === '--manager' ? runtime.managerMain : runtime.main;
 await main({ deps, onDeps: cb => { listener = cb; if (deps.state !== 'installing') cb(deps); } });

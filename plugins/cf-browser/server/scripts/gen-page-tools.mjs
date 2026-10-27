@@ -7,7 +7,7 @@ const { createConnection } = require('@playwright/mcp');
 const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
 const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
 
-// Keep in sync with PAGE_CAPABILITIES in src/sessions.ts.
+// Frozen legacy discovery contract for the transition adapter; not the ordinary tool list.
 const CAPABILITIES = ['core', 'core-navigation', 'core-tabs', 'core-input', 'vision', 'network'];
 const ALLOW = [
   'browser_navigate', 'browser_navigate_back', 'browser_snapshot', 'browser_find', 'browser_click', 'browser_type', 'browser_fill_form',

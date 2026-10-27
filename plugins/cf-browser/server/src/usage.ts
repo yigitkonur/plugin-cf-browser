@@ -65,11 +65,3 @@ export function month(): Totals {
   try { files = readdirSync(dir()).filter(f => f.startsWith(prefix) && f.endsWith('.jsonl')); } catch { /* none yet */ }
   return total(files.flatMap(read));
 }
-
-// Budgeted minutes today: finished sessions + live sessions so far + Quick Actions + crawls, Kitesurf excluded.
-export function budgetUsedMin(liveMsToday: number): number {
-  const t = today();
-  return (t.sessionMs + t.quickMs + t.crawlMs + liveMsToday) / 60000;
-}
-
-export const startOfUtcDay = () => { const n = new Date(); return Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()); };

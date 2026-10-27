@@ -1,41 +1,27 @@
-# decisions
+# Decisions
 
-## Owner decisions (2026-10-22)
-| Topic | Decision |
-|---|---|
-| Repo / name | `yigitkonur/plugin-cf-browser`, marketplace `plugin-cf-browser`, plugin `cf-browser` |
-| MCP shipping | Inside the plugin. No npm package. Users need Node with npm |
-| Scope | Browser only, every Browser Run feature including beta and lab ones. Cloudflare Sandbox is a later phase |
-| Logins | No password-manager integration (Browser Run has none). The human logs in through a Live View handoff; the agent never types passwords |
-| Saved logins | A persistent everyday profile (`main`) loaded and saved by default; a clone path when two browsers want it; separate profiles for other accounts; the skills ask the user at the right moments |
+## Shared-browser revision (owner-approved 2026-10-27)
 
-## Why our own MCP server
-| Option | Gap |
-|---|---|
-| Cloudflare's hosted `browser.mcp.cloudflare.com/mcp` (OAuth; page reads, crawl, list/kill sessions) | Cannot create a session, interact, open Live View, hand off, record, or keep profiles |
-| `chrome-devtools-mcp --wsEndpoint=…?keep_alive=… --wsHeaders='{"Authorization":"Bearer …"}'` (the docs' recommendation) | One session fixed at startup and the token in plain process args. No close, budget, Live View, handoff or profiles |
-| `@cloudflare/playwright-mcp` (deploy-your-own Worker) | Every user deploys a Worker; no lifecycle control |
+- Keep the existing plugin identity and Codex/Claude Code stdio entry points. First target is personal use across agents on the same machine; remote ChatGPT hosting, SaaS and other browser backends remain separate work.
+- One manager owns the profile, remote browser and default Chrome context. Agents own tasks/tabs, not browsers. Default context matters because native Live View creates its tabs there too.
+- Keep the existing everyday profile name and storage-state format. Parallelism is not an account/profile boundary. Separate profiles are explicit account environments.
+- Human takeover is interactive and tab-scoped; login/account changes pause shared identity. Full/DevTools viewers require browser-wide control. Human ownership survives an agent exiting.
+- Use the pinned Playwright engine's AI snapshot/aria-ref behavior behind our adapter. No custom selector engine, browser fork or local runtime Chromium. The private snapshot contract is pinned and tested.
+- Ordinary action responses include the next observation. Screenshots are native MCP images with CSS viewport coordinates. Long outputs are paged valid JSON.
+- Use instructions for incremental scripting; no script content/length hook or blanket permission ritual. Runtime ownership, uncertainty and actual cancellation are execution semantics.
+- Native action timeouts bound waits. Long work returns an operation id. A cancelled script closes only its target, because terminating current JavaScript alone does not cancel future promises/timers. Effects already delivered to a site remain uncertain.
+- Remove plugin budget, per-window concurrency and maximum-age cutoffs. Finish tasks explicitly; idle forgotten work is reaped. Keep human/inflight work alive. Failed remote closes remain in a durable journal.
+- Checkpoint cookies, localStorage and IndexedDB atomically. No silent narrower fallback. Missing/corrupt profiles differ. A failed explicit finish keeps the task available for save recovery.
+- Small local control panel; native Cloudflare viewer reused. Separate named window works without third-party iframe assumptions. Inline mode is optional; mouse activity inside the viewer is not inferred.
+- Credentials come from existing environment/host configuration/file. Doctor works without credentials and separates local readiness from API access. No setup questionnaire for budgets or profile models.
+- Advanced Cloudflare services remain on-demand. Legacy names remain callable for one transition release, mapping session ownership to tasks so old close calls cannot kill another user's browser.
 
-## Architecture
-- **One local stdio server per Claude Code window owns every browser it opens.** It is the only thing that creates browsers, so it can close idle ones, enforce an age cap, close everything on exit and sweep a crashed run's leftovers on the next start. Cloudflare's `keep_alive` (idle + 60 s) is the backstop if the process dies.
-- **No SessionEnd hook.** It fires on `/clear` while the server keeps running, so it would close browsers the user still uses. The stop hook only informs the user (a blocking Stop hook shows as "Stop hook error occurred").
-- **Page tools come from `@playwright/mcp`, embedded once per browser** (`createConnection(config, () => context)` over the MCP SDK's `InMemoryTransport`) and re-exposed with a required `session_id`. It gives a proven snapshot/ref engine without reimplementing it.
-- **Hidden page tools:** `browser_close` (use `session_close`), `browser_run_code_unsafe` (Node code on the user's machine), storage/cookie/localStorage tools (profiles are ours), tracing/video/PDF-save, `browser_drop`, network routing and offline tools, test/verify/annotate tools. **Every `filename` argument is removed** at build time so a prompt-injected page cannot get the agent to write files.
-- **Uploads** pass our guard first (project or temp folder, no dotfiles, not the profiles/data folders), then are copied into the browser's output folder, the only place the embedded server reads uploads from; `allowUnrestrictedFileAccess` stays off.
-- **Profiles live outside `CLAUDE_PLUGIN_DATA`** (`~/.cf-browser`), because Claude Code deletes the plugin data folder on uninstall and logins must survive reinstalls.
-- **The MCP SDK is bundled into `dist/server.mjs`; `playwright-core` and `@playwright/mcp` are installed at first start** (playwright-core is not esbuild-safe). The server answers `tools/list` immediately from a generated `page-tools.json`; only tools that need the driver say "installing". (The plan gated every tool except two; gating only the driver-dependent ones is strictly more useful.)
-- **The install runs `npm ci --omit=dev --ignore-scripts`** into a temp folder renamed atomically; no lock files; the API token is stripped from its environment.
-- **A local usage ledger** (UTC days) backs the daily budget, because Browser Run has no usage API. No dollar estimate: one machine cannot see the account.
+## Implementation tradeoffs
 
-## Changes made after live testing (see verified-facts.md)
-- `webmcp_call` added: in `@playwright/mcp` 0.0.83 page WebMCP tools are dynamic MCP tools named `webmcp_<name>`; the tool maps the plain name the snapshot shows.
-- Handoff heartbeat kept: an active handoff does not keep a session alive by itself (CF10).
-- `replay.html` loads rrweb-player from unpkg, not jsDelivr: jsDelivr serves the UMD build as `application/node` with `nosniff` (CF19).
-- A guardrails 403 on `browser_navigate` gets an explicit note, so the agent does not mistake its own allowlist for the site blocking it.
+The manager uses a private authenticated loopback endpoint plus an atomic process lock and a secret-free recovery journal. Its endpoint descriptor is mode 600 and contains a local access token. A live process lock is never stolen on heartbeat age alone. An upgrade waits for active work to finish.
 
-## Codex (1.1.0)
-- **Same repo, same plugin folder, one server.** Codex reads `.agents/plugins/marketplace.json` and `.codex-plugin/plugin.json`; Claude Code reads `.claude-plugin/`. The skills and hook scripts are shared; Codex gets its own MCP file (`.codex-mcp.json`) and hooks file (`hooks/codex-hooks.json`) because the formats differ (Codex hook commands are shell strings with `${PLUGIN_ROOT}`; its MCP file uses `cwd` and `env_vars`).
-- **Server name `cf_browser` in Codex**: Codex ships its own `browser` plugin.
-- **Credentials in `~/.cf-browser/.env`**: Codex has no plugin settings. The file sits next to the profiles, which the guard hook already keeps the agent away from; the guard now covers the file itself.
-- **Watchdog instead of trusting the exit path**: Codex sends SIGTERM and kills the server moments later, before it can close anything (seen live: SIGTERM logged, no exit). A detached watchdog in its own process group runs the existing crash sweep when the server is gone. It costs one idle Node process per agent window.
-- **No project folder in Codex**: Codex starts plugin servers in the plugin folder and sends no MCP roots, so uploads are limited to the temp folder there rather than guessing.
+Requests are deduplicated within a manager lifetime. A transport failure queries the original request; it never automatically repeats a mutation. After manager restart, unavailable results are explicitly unknown. A lost create response enters a provider-keep_alive recovery window rather than creating a duplicate browser whose id cannot be reconciled safely.
+
+The full browser and human interaction APIs do not provide a general trustworthy viewer-activity signal. Ownership is explicit. Defaulting to interactive does not mean the agent continues input simultaneously in a human-owned tab.
+
+The former per-window embedded Playwright MCP server, profile clone-on-conflict workflow, age/budget enforcement and file-path permission hook are superseded. Historical provider observations are retained in `verified-facts.md` for provenance.

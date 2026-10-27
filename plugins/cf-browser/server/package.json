@@ -5,15 +5,20 @@
   "description": "Runtime dependencies installed by launch.mjs on first start",
   "license": "MIT",
   "dependencies": {
-    "@playwright/mcp": "0.0.83",
-    "playwright": "1.64.0-alpha-1790635538000",
     "playwright-core": "1.64.0-alpha-1790635538000"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
-    "esbuild": "0.28.2"
+    "@playwright/mcp": "0.0.83",
+    "@types/node": "22.18.10",
+    "ajv": "8.17.1",
+    "esbuild": "0.28.2",
+    "playwright": "1.64.0-alpha-1790635538000",
+    "typescript": "5.9.3"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --external:@playwright/mcp --external:playwright --external:playwright-core --outfile=dist/server.mjs --log-level=warning && node scripts/gen-page-tools.mjs > dist/page-tools.json"
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/test.mjs",
+    "typecheck": "tsc --noEmit"
   }
 }
