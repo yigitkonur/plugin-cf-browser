@@ -181,3 +181,13 @@ test('an already-ended remote browser does not claim a fresh profile checkpoint'
   const out = await m.finish('a', a.task_id);
   assert.equal(out.browser_state, 'closed'); assert('profile_checkpoint' in out); assert.equal(out.profile_checkpoint.saved, false);
 });
+test('long identity handoff preserves paused tasks and gives fresh idle grace after return', async () => {
+  const { m, backend, profile } = fixture(); const a = await m.start('a', { profile }), b = await m.start('b', { profile });
+  await m.takeHuman(a.tab.tab_id, { scope: 'identity' });
+  for (const task of m.tasks.values()) task.lastActivity = 0;
+  await m.tick();
+  assert.equal(m.tasks.get(b.task_id)?.state, 'active'); assert.equal(backend.closes, 0);
+  await m.releaseHuman(a.tab.tab_id); await m.tick();
+  assert.equal(m.tasks.get(a.task_id)?.state, 'active'); assert.equal(m.tasks.get(b.task_id)?.state, 'active');
+  await m.detach('a'); await m.detach('b');
+});

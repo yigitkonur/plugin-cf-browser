@@ -18248,6 +18248,7 @@ var Manager = class {
         });
       });
       p.on("close", () => {
+        if (tab3.control === "human" || tab3.pendingHuman) this.resumeAfterHuman(r, tab3);
         tab3.closed = true;
         invalidate(tab3);
         this.persist();
@@ -18651,10 +18652,7 @@ var Manager = class {
       t.handoff.status = "released";
     }
     const checkpoint = r.connected ? await this.checkpoint(r) : { saved: false };
-    if (t.humanScope === "identity" || t.humanScope === "browser") {
-      r.authEpoch++;
-      for (const x of r.tabs.values()) invalidate(x);
-    }
+    this.resumeAfterHuman(r, t);
     t.control = "agent";
     t.pendingHuman = false;
     t.humanScope = void 0;
@@ -18666,6 +18664,14 @@ var Manager = class {
     }
     this.persist();
     return { tab_id: t.id, status: t.control, checkpoint, next: t.control === "human" ? "The original task ended. Keep using the tab or close it from the panel." : "Observe before continuing. Handoff completion alone does not prove login succeeded." };
+  }
+  resumeAfterHuman(r, t) {
+    const shared = t.humanScope === "identity" || t.humanScope === "browser";
+    if (shared) {
+      r.authEpoch++;
+      for (const x of r.tabs.values()) invalidate(x);
+    }
+    for (const task3 of this.tasks.values()) if (task3.state === "active" && task3.profile === r.profile && (shared || task3.id === t.taskId)) task3.lastActivity = Date.now();
   }
   async human(clientId, a) {
     const { r, t } = this.ownedTab(clientId, a.tab_id, true);
@@ -18735,6 +18741,7 @@ var Manager = class {
       for (const t of this.tasks.values()) {
         if (t.state !== "active" || Date.now() - t.lastActivity < cfg.idleTimeoutS * 1e3) continue;
         const r = this.browsers.get(t.profile);
+        if (this.identityTabs.has(t.profile) || r && [...r.tabs.values()].some((x) => !x.closed && (x.control === "human" || x.pendingHuman) && ["identity", "browser"].includes(x.humanScope))) continue;
         if (r && [...r.tabs.values()].some((x) => x.taskId === t.id && !x.closed && (x.operationId || x.control === "human" || x.pendingHuman))) continue;
         if ([...this.artifacts.values()].some((a) => a.task_id === t.id && a.status === "downloading")) continue;
         await this.finish(t.clientId, t.id).catch(() => {

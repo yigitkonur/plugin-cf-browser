@@ -182,7 +182,10 @@ export class Manager {
       const tab = t;
       if (parent) parent.events.push({ type: 'popup', tab_id: tab.id, url: p.url() });
       p.on('framenavigated', () => { page.invalidate(tab); p.title().then((title: string) => { tab.title = title; }).catch(() => {}); });
-      p.on('close', () => { tab.closed = true; page.invalidate(tab); this.persist(); });
+      p.on('close', () => {
+        if (tab.control === 'human' || tab.pendingHuman) this.resumeAfterHuman(r, tab);
+        tab.closed = true; page.invalidate(tab); this.persist();
+      });
       p.on('dialog', (dialog: any) => { tab.dialog = dialog; tab.events.push({ type: 'dialog', dialog_type: dialog.type(), message: dialog.message() }); });
       (tab as any).console = []; (tab as any).network = [];
       p.on('console', (msg: any) => { const log = (tab as any).console; log.push({ level: msg.type(), text: msg.text() }); if (log.length > 200) log.shift(); });
@@ -431,12 +434,19 @@ export class Manager {
     if (t.control !== 'human' && !t.pendingHuman) return { tab_id: t.id, status: 'agent' };
     if (t.handoff?.status === 'pending') { await this.backend.releaseHandoff(t); t.handoff.status = 'released'; }
     const checkpoint = r.connected ? await this.checkpoint(r) : { saved: false };
-    if (t.humanScope === 'identity' || t.humanScope === 'browser') { r.authEpoch++; for (const x of r.tabs.values()) page.invalidate(x); }
+    this.resumeAfterHuman(r, t);
     t.control = 'agent'; t.pendingHuman = false; t.humanScope = undefined; t.humanSince = undefined; page.invalidate(t);
     // A human tab whose original agent exited stays accessible until explicit close/assignment.
     if (!t.taskId || this.tasks.get(t.taskId)?.state !== 'active') { t.control = 'human'; t.humanScope = 'tab'; }
     this.persist();
     return { tab_id: t.id, status: t.control, checkpoint, next: t.control === 'human' ? 'The original task ended. Keep using the tab or close it from the panel.' : 'Observe before continuing. Handoff completion alone does not prove login succeeded.' };
+  }
+  private resumeAfterHuman(r: BrowserRecord, t: Tab) {
+    const shared = t.humanScope === 'identity' || t.humanScope === 'browser';
+    if (shared) { r.authEpoch++; for (const x of r.tabs.values()) page.invalidate(x); }
+    // Returning from explicit user work starts a new idle interval. Otherwise a
+    // long login could immediately reap the task or its identity-paused peers.
+    for (const task of this.tasks.values()) if (task.state === 'active' && task.profile === r.profile && (shared || task.id === t.taskId)) task.lastActivity = Date.now();
   }
   async human(clientId: string, a: any) {
     const { r, t } = this.ownedTab(clientId, a.tab_id, true);
@@ -500,6 +510,7 @@ export class Manager {
       for (const t of this.tasks.values()) {
         if (t.state !== 'active' || Date.now() - t.lastActivity < cfg.idleTimeoutS * 1000) continue;
         const r = this.browsers.get(t.profile);
+        if (this.identityTabs.has(t.profile) || (r && [...r.tabs.values()].some(x => !x.closed && (x.control === 'human' || x.pendingHuman) && ['identity', 'browser'].includes(x.humanScope!)))) continue;
         if (r && [...r.tabs.values()].some(x => x.taskId === t.id && !x.closed && (x.operationId || x.control === 'human' || x.pendingHuman))) continue;
         if ([...this.artifacts.values()].some(a => a.task_id === t.id && a.status === 'downloading')) continue;
         await this.finish(t.clientId, t.id).catch(() => {});
