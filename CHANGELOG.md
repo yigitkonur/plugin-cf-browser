@@ -1,5 +1,9 @@
 # changelog
 
+## 1.2.1 - 2026-10-27
+
+- fix: preserve filtered observation continuation (0ab16f1)
+
 ## 1.2.0 - 2026-10-27
 
 - feat: share persistent browser tasks across local agents (325637a)

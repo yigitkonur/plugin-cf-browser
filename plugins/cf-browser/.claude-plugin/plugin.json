@@ -1,6 +1,6 @@
 {
   "name": "cf-browser",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "defaultEnabled": false,
   "description": "A shared Cloudflare Browser Run browser: persistent logins, independent agent tabs, interactive Live View and verified cleanup when work finishes.",
   "author": {

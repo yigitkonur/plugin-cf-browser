@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Claude Code plugin that lets agents use Cloudflare Browser Run as their browser.",
-    "version": "1.2.0"
+    "version": "1.2.1"
   },
   "plugins": [
     {
       "name": "cf-browser",
       "description": "Shared Cloudflare browser with persistent logins, agent-owned tabs, interactive human control and verified cleanup.",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": {
         "name": "yigitkonur",
         "url": "https://github.com/yigitkonur"
