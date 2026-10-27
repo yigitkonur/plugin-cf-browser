@@ -1,12 +1,14 @@
 # Maintainer notes (plugin-cf-browser)
 
-Claude Code and Codex plugin `cf-browser` (marketplace `plugin-cf-browser`, plugin folder `plugins/cf-browser`): Cloudflare Browser Run browsers through an MCP server, hooks and six skills. The Codex side is `.codex-plugin/plugin.json`, `.codex-mcp.json` and `hooks/codex-hooks.json`; the server, skills and hook scripts are shared.
+Local stdio MCP entries for Codex and Claude Code share one account-scoped manager. `server/src/manager.ts` owns tasks/tabs/profiles; `backend.ts` is the Cloudflare/CDP seam; `dispatch.ts` separates ordinary and advanced tools. See [architecture](docs/architecture.md) for state transitions and failure handling before changing lifecycle behavior.
 
-- Read `DECISIONS.md` and `verified-facts.md` before changing behavior; every claim in the README was run live against a real account.
-- The server reads its own version from the plugin manifest at runtime (`readVersion()` in `plugins/cf-browser/server/src/index.ts`); never put a version constant in code. `scripts/validate.sh` fails when that changes.
-- `plugins/cf-browser/server/dist/` is built output and is committed; run `npm run build` in `plugins/cf-browser/server` and commit it with the source (CI fails on a stale `dist/`).
-- Never put a Cloudflare account id or API token in this repo, a test, or a command line. `scripts/secret-scan.sh --staged` (this repo's lab-aware scan) and `scripts/kit/secret-scan.py` both run before pushing.
-- Local checks: `scripts/validate.sh`, `scripts/hook-smoke.sh`.
+- Read `DECISIONS.md` and [acceptance](docs/acceptance.md). `verified-facts.md` is historical evidence for the old architecture, not current acceptance.
+- Keep the browse skill the authoritative agent workflow. Other skills and the primer point to it; branch-specific instructions live in its references. Use [agent evaluation](docs/agent-evaluation.md) to test steering changes, including false-completion and wrong-tab cases.
+- Test ownership, persistence, cancellation and cleanup at their real interfaces. Unit/contract tests alone are not evidence of an actual host-agent run; record verification levels separately.
+- Version comes from `readVersion()` in `server/src/index.ts`; preserve plugin identities and the release process below.
+- `server/dist/` is committed. Run typecheck, tests and build in `plugins/cf-browser/server`; CI rejects stale output.
+- Never put account ids or tokens in source, fixtures, command arguments or logs. Live tests use an isolated profile, synthetic state and exact-session cleanup. The user's saved profile is not a fixture.
+- Before pushing run `scripts/validate.sh`, `scripts/hook-smoke.sh`, `scripts/secret-scan.sh --staged` and the kit checks below.
 
 <!-- kit:agents:start -->
 ## Releases, versions and installs (shared by every plugin repo)

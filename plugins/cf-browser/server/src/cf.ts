@@ -8,6 +8,7 @@ export class ToolError extends Error {
 // Strips anything that would let a reader drive the browser: the token, CDP/WebSocket URLs, Live View URLs.
 export function mask(s: unknown): string {
   let out = String(s);
+  if (cfg.accountId) out = out.split(cfg.accountId).join('<account-id>');
   if (cfg.token) out = out.split(cfg.token).join('***');
   return out
     .replace(/wss?:\/\/[^\s"'<>)]+/g, '<ws-url>')
@@ -49,15 +50,15 @@ export async function rest(method: string, path: string, o: RestOpts = {}): Prom
     try {
       r = await fetch(url, { ...init, signal: AbortSignal.timeout(o.timeoutMs ?? 30000) });
     } catch (e: any) {
-      if (attempt === 0 && e?.name !== 'TimeoutError') { await sleep(2000); continue; }
-      throw new ToolError('NETWORK', `Cloudflare API request failed: ${mask(e?.message || e)}`);
+      if (method === 'GET' && attempt === 0 && e?.name !== 'TimeoutError') { await sleep(2000); continue; }
+      throw new ToolError(method === 'POST' ? 'OUTCOME_UNKNOWN' : 'NETWORK', `Cloudflare API request failed: ${mask(e?.message || e)}`);
     }
     if (r.status === 429) {
       const ra = Number(r.headers.get('retry-after') || '0');
       if (attempt === 0 && ra > 0 && ra <= 20) { await sleep(ra * 1000); continue; }
       throw new ToolError('RATE_LIMITED', `Cloudflare rate limit hit${ra ? `; retry after ${ra} s` : ''}.`, 'Wait, then retry once. Do not loop.');
     }
-    if (r.status >= 500 && attempt === 0) { await sleep(2000); continue; }
+    if (method === 'GET' && r.status >= 500 && attempt === 0) { await sleep(2000); continue; }
     const contentType = r.headers.get('content-type') || '';
     const msUsed = r.headers.has('x-browser-ms-used') ? Number(r.headers.get('x-browser-ms-used')) : undefined;
     if (o.quick && msUsed !== undefined) recordQuick(msUsed, o.engine || 'chromium', path.split('?')[0]);
@@ -76,7 +77,7 @@ export async function rest(method: string, path: string, o: RestOpts = {}): Prom
     if (r.status === 404 && o.allow404) return { status: 404, data, contentType, msUsed };
     if (!r.ok || (data && data.success === false)) {
       const msg = data?.errors?.map((e: any) => e.message + (e.code ? ` [${e.code}]` : '')).join('; ') || data?.error || (typeof data === 'string' ? data.slice(0, 300) : `HTTP ${r.status}`);
-      throw new ToolError(r.status === 404 ? 'NOT_FOUND' : 'CLOUDFLARE', `Cloudflare API ${method} ${path.split('?')[0]} → HTTP ${r.status}: ${mask(msg)}`);
+      throw new ToolError(method === 'POST' && r.status >= 500 ? 'OUTCOME_UNKNOWN' : r.status === 404 ? 'NOT_FOUND' : 'CLOUDFLARE', `Cloudflare API ${method} ${path.split('?')[0]} → HTTP ${r.status}: ${mask(msg)}`);
     }
     if (data && typeof data === 'object' && 'success' in data && 'result' in data) data = data.result;
     return { status: r.status, data, contentType, msUsed };

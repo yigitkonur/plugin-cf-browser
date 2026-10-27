@@ -8,7 +8,6 @@ import { ToolError } from './cf.js';
 // ~/.cf-browser/profiles/<name>/{state.json, state.prev.json, meta.json, lock.json}
 
 export const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-export const STALE_MS = 120000;
 
 export interface LockInfo { serverPid: number; nonce: string; claudePid: number; sessionId: string; label: string; since: string; updatedAt: string }
 export interface Meta { name: string; createdAt: string; updatedAt?: string; savedFromSession?: string; sites: string[]; cookieCount: number; earliestExpiry?: string }
@@ -46,7 +45,13 @@ export function create(name: string): Meta {
 }
 
 export function loadState(name: string): any | undefined {
-  return readJson(join(profileDir(name), 'state.json'));
+  checkName(name);
+  const path = join(profileDir(name), 'state.json');
+  let text: string;
+  try { text = readFileSync(path, 'utf8'); }
+  catch (e: any) { if (e.code === 'ENOENT') return undefined; throw new ToolError('PROFILE_UNREADABLE', `Cannot read profile "${name}" (${e.code}).`, 'Repair file permissions; the existing profile was not changed.'); }
+  try { const state = JSON.parse(text); validateState(state); return state; }
+  catch { throw new ToolError('PROFILE_CORRUPT', `Profile "${name}" has invalid storage state.`, 'Use profile_restore_previous after all tasks finish; no empty profile has replaced it.'); }
 }
 
 function summarize(state: any): Pick<Meta, 'sites' | 'cookieCount' | 'earliestExpiry'> {
@@ -58,11 +63,23 @@ function summarize(state: any): Pick<Meta, 'sites' | 'cookieCount' | 'earliestEx
   return { sites: [...sites].filter(Boolean).sort(), cookieCount: cookies.length, earliestExpiry: exp ? new Date(exp * 1000).toISOString() : undefined };
 }
 
-// rotate: the first save of a session moves the previous state.json to state.prev.json.
-export function save(name: string, state: any, sessionId: string, rotate: boolean) {
+// Validate before replacing any previously successful checkpoint.
+export function validateState(state: any) {
+  if (!state || !Array.isArray(state.cookies) || !Array.isArray(state.origins)) throw new Error('Invalid storage state');
+  for (const c of state.cookies) if (typeof c.name !== 'string' || typeof c.value !== 'string' || typeof c.domain !== 'string') throw new Error('Invalid cookie');
+  for (const o of state.origins) if (typeof o.origin !== 'string' || !Array.isArray(o.localStorage) || (o.indexedDB !== undefined && !Array.isArray(o.indexedDB))) throw new Error('Invalid origin');
+}
+
+export function save(name: string, state: any, sessionId: string, rotate = true) {
+  checkName(name);
+  validateState(state);
   ensureDir(root()); ensureDir(profileDir(name));
   const dir = profileDir(name);
-  if (rotate && existsSync(join(dir, 'state.json'))) renameSync(join(dir, 'state.json'), join(dir, 'state.prev.json'));
+  // Copy the last valid checkpoint before atomic replacement; state.json is never absent.
+  if (rotate && existsSync(join(dir, 'state.json'))) {
+    const previous = loadState(name);
+    writeAtomic(join(dir, 'state.prev.json'), JSON.stringify(previous));
+  }
   writeAtomic(join(dir, 'state.json'), JSON.stringify(state));
   const old = readJson<Meta>(join(dir, 'meta.json'));
   const meta: Meta = { name, createdAt: old?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(), savedFromSession: sessionId, ...summarize(state) };
@@ -93,8 +110,10 @@ export function restorePrevious(name: string) {
   checkName(name);
   const dir = profileDir(name);
   const l = readLock(name);
-  if (l && !isStale(l)) throw new ToolError('PROFILE_IN_USE', `Profile "${name}" is open in browser ${l.label}; close it (with save_profile:false) first.`);
+  if (l && !isStale(l)) throw new ToolError('PROFILE_IN_USE', `Profile "${name}" is open in browser ${l.label}; finish its tasks and human control first.`);
   if (!existsSync(join(dir, 'state.prev.json'))) throw new ToolError('NO_BACKUP', `Profile "${name}" has no previous state to restore.`);
+  try { validateState(JSON.parse(readFileSync(join(dir, 'state.prev.json'), 'utf8'))); }
+  catch { throw new ToolError('PROFILE_BACKUP_CORRUPT', 'The backup is invalid; the current state was not changed.'); }
   const cur = join(dir, 'state.json');
   const tmp = join(dir, `state.swap-${process.pid}`);
   if (existsSync(cur)) renameSync(cur, tmp);
@@ -113,7 +132,8 @@ function pidAlive(pid: number): boolean {
 }
 
 export function isStale(l: LockInfo): boolean {
-  return !pidAlive(l.serverPid) || Date.now() - Date.parse(l.updatedAt) > STALE_MS;
+  // A live legacy writer may be suspended or blocked. Never steal its profile on age alone.
+  return !pidAlive(l.serverPid);
 }
 
 export function acquireLock(name: string, info: LockInfo): { ok: true } | { ok: false; holder: LockInfo } {
@@ -127,6 +147,7 @@ export function acquireLock(name: string, info: LockInfo): { ok: true } | { ok: 
     } catch (e: any) {
       if (e?.code !== 'EEXIST') throw e;
       const holder = readLock(name);
+      if (!holder && existsSync(path)) throw new ToolError('PROFILE_LOCK_UNREADABLE', `Profile "${name}" has an unreadable ownership lock.`, 'Reconcile its previous writer before removing the lock; no new writer was started.');
       if (holder && !isStale(holder)) return { ok: false, holder };
       // Stale (or unreadable): take it over only while holding the takeover guard (atomic mkdir), and only if it is
       // still the same stale lock once inside, so a fresh lock another window just took is never removed.

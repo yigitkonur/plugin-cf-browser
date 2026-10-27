@@ -6,7 +6,7 @@ import { ToolError } from './cf.js';
 export interface DepsState { state: 'installing' | 'ready' | 'failed'; dir?: string; startedAt?: number; error?: string }
 
 let deps: DepsState = { state: 'installing', startedAt: Date.now() };
-let loaded: { chromium: any; createConnection: any } | null = null;
+let loaded: { chromium: any } | null = null;
 
 export function setDeps(d: DepsState) { deps = d; }
 export function depsState() { return deps; }
@@ -20,7 +20,6 @@ export function pw() {
   if (deps.state === 'failed') throw new ToolError('INSTALL_FAILED', `cf-browser could not install its browser driver: ${deps.error}`, 'Check the network, then run /mcp and reconnect the cf-browser server.');
   const req = createRequire(join(deps.dir!, 'package.json'));
   const { chromium } = req('playwright-core');
-  const { createConnection } = req('@playwright/mcp');
-  loaded = { chromium, createConnection };
+  loaded = { chromium };
   return loaded;
 }

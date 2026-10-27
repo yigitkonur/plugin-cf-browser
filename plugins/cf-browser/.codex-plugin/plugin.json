@@ -1,7 +1,7 @@
 {
   "name": "cf-browser",
   "version": "1.1.2",
-  "description": "A real cloud browser on Cloudflare Browser Run: saved logins in an everyday profile, human handoff for logins and 2FA through Live View, a daily budget, and browsers that close themselves so nothing keeps billing.",
+  "description": "A shared Cloudflare Browser Run browser: persistent logins, independent agent tabs, interactive Live View and verified cleanup when work finishes.",
   "author": {
     "name": "yigitkonur",
     "url": "https://github.com/yigitkonur"
@@ -21,8 +21,8 @@
   ],
   "interface": {
     "displayName": "cf-browser",
-    "shortDescription": "Cloud browser on Cloudflare Browser Run",
-    "longDescription": "Drive a real Chromium in Cloudflare Browser Run. Logins are kept in an everyday profile, you log in yourself through a Live View handoff (the agent never types passwords), you can watch read-only before submits, and browsers close themselves when idle, at a max age and when Codex exits. Also Quick Actions with Kitesurf, crawls, recordings with a replay page, guardrails and WebMCP.",
+    "shortDescription": "Shared cloud browser",
+    "longDescription": "Work with persistent Cloudflare logins across Codex and Claude Code on the same machine. Each agent owns stable tabs, actions return fresh observations, and you can take a tab through interactive Live View. The shared manager saves the profile and confirms remote closure when all tasks and human control finish. Advanced crawl, reads, replay and WebMCP are discovered when needed.",
     "developerName": "yigitkonur",
     "category": "Developer Tools",
     "capabilities": [

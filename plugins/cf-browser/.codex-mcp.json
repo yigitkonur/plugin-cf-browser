@@ -2,9 +2,18 @@
   "mcpServers": {
     "cf_browser": {
       "command": "node",
-      "args": ["./server/launch.mjs"],
+      "args": [
+        "./server/launch.mjs"
+      ],
       "cwd": ".",
-      "env_vars": ["CF_ACCOUNT_ID", "CF_API_TOKEN", "CFB_PLAN", "CFB_DEFAULT_PROFILE", "CFB_IDLE_TIMEOUT_S", "CFB_MAX_SESSION_MIN", "CFB_MAX_CONCURRENT", "CFB_DAILY_BUDGET_MIN", "CFB_OPEN_LIVE_VIEW", "CFB_HOME"],
+      "env_vars": [
+        "CF_ACCOUNT_ID",
+        "CF_API_TOKEN",
+        "CFB_DEFAULT_PROFILE",
+        "CFB_IDLE_TIMEOUT_S",
+        "CFB_OPEN_LIVE_VIEW",
+        "CFB_HOME"
+      ],
       "startup_timeout_sec": 30
     }
   }
