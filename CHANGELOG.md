@@ -1,5 +1,9 @@
 # changelog
 
+## 1.2.0 - 2026-10-27
+
+- feat: share persistent browser tasks across local agents (325637a)
+
 ## 1.1.2 - 2026-10-25
 
 - fix: install off by default; shared plugin-kit CI, release and install docs (a91b01b)
